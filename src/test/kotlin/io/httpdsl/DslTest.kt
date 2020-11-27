@@ -18,13 +18,24 @@ class DslTest {
             .notifier(ConsoleNotifier(true)))
 
     @Test
+    internal fun `simple example request`() {
+        val response = HttpClientDsl("http://localhost:${wiremock.port()}")
+                .get("/admin/ping") {
+                    request { timeout { 10 } }
+                }
+
+        assertEquals(200, response.statusCode())
+        assertEquals("pong", response.bodyString())
+    }
+
+    @Test
     internal fun `perform get-request and prvoide a function that calls ping before get-request is sent`() {
         val http = HttpClientDsl("http://localhost:${wiremock.port()}")
-        val supplierFunction : () -> String =  { http.get("/admin/ping").bodyString() }
+        val supplierFunction: () -> String = { http.get("/admin/ping").bodyString() }
 
         val response = http.get("/admin/{uriVariable}", "ping") {
             request {
-                requestTimeout { 20 }
+                timeout { 20 }
                 headers {
                     header("header1", "value1")
                     header("supplier", supplierFunction)
@@ -33,7 +44,7 @@ class DslTest {
                     contentType {
                         arrayOf("application/json")
                     }
-                    json { PersonDto( firstame = "Bill", lastname = "Anderson") }
+                    json { PersonDto(firstame = "Bill", lastname = "Anderson") }
                 }
             }
         }
@@ -55,7 +66,7 @@ class DslTest {
                         .withStatus(200)
                         .withBody("<status>success</status>")))
 
-        fun login(user: String, pass: String) : String { // anonymous function for simulating a login
+        fun login(user: String, pass: String): String { // anonymous function for simulating a login
             println("simuler login med user=$user pass=$pass")
             return authHeaderValue
         }
@@ -65,7 +76,7 @@ class DslTest {
         // start DSL
         val response = http.post("/xml/{uriVariable}", "ping") {
             request {
-                requestTimeout { 20 }
+                timeout { 20 }
                 headers {
                     authorization { login("user", "pass") }
                 }

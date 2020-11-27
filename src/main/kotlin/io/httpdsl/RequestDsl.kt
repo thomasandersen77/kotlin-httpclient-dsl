@@ -21,7 +21,7 @@ class RequestDsl internal constructor(private val clientBuilder: HttpClient.Buil
         body.invoke(this)
     }
 
-    fun requestTimeout(timeout: () -> Int) {
+    fun timeout(timeout: () -> Int) {
         requestBuilder.timeout(Duration.ofSeconds(timeout.invoke().toLong()))
     }
 
