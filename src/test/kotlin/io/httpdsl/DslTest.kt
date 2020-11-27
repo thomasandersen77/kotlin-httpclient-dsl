@@ -19,10 +19,9 @@ class DslTest {
 
     @Test
     internal fun `simple example request`() {
-        val response = HttpClientDsl("http://localhost:${wiremock.port()}")
-                .get("/admin/ping") {
-                    request { timeout { 10 } }
-                }
+        val http = HttpClientDsl("http://localhost:${wiremock.port()}")
+
+        val response = http.get("/admin/ping") 
 
         assertEquals(200, response.statusCode())
         assertEquals("pong", response.bodyString())
