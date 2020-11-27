@@ -2,12 +2,12 @@ package io.httpdsl
 
 import java.net.URI
 import java.net.URISyntaxException
-import java.util.*
 
 object UriExpander {
     fun expand(uriTemplate: String, vararg uriVariables: Any): URI {
-        Objects.requireNonNull(uriTemplate, "Url required, was null")
-        require(!((uriTemplate.contains("{") || uriTemplate.contains("}")) && uriVariables.isEmpty())) { "Missing uriVariables" }
+        require(!((uriTemplate.contains("{") || uriTemplate.contains("}")) && uriVariables.isEmpty())) {
+            "Missing uriVariables"
+        }
         return try {
             if (!uriTemplate.contains("{") || uriVariables.isEmpty()) {
                 URI(uriTemplate)
