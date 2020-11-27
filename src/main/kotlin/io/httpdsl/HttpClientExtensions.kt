@@ -36,6 +36,6 @@ fun HttpClientDsl.delete(path: String, vararg uriVariables: String, requestDsl: 
     return RequestDsl(builder).apply(requestDsl).exchange("${this.baseUrl}${expandedPath}", "GET")
 }
 
-fun asJson(type: Any): String {
-    return ObjectMapper().writeValueAsString(type)
+fun HttpResponse<*>.bodyString() : String {
+    return this.body().toString()
 }
