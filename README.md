@@ -1,4 +1,4 @@
-# kotlin-httpclint-dsl
+# kotlin-httpclient-dsl
 
 A simple DSL on top of Java's HttpClient for simple, structured integration with other http-services from your Kotlin-application 
 
