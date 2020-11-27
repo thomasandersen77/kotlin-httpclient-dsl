@@ -8,12 +8,9 @@ import com.github.tomakehurst.wiremock.matching.EqualToXmlPattern
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.extension.ExtendWith
-import org.springframework.test.context.junit.jupiter.SpringExtension
 import java.util.*
 import kotlin.test.assertEquals
 
-@ExtendWith(SpringExtension::class)
 class DslTest {
 
     private val wiremock = WireMockServer(WireMockConfiguration()
@@ -73,9 +70,7 @@ class DslTest {
                     authorization { login("user", "pass") }
                 }
                 body {
-                    contentType {
-                        arrayOf("application/xml")
-                    }
+                    contentType { arrayOf("application/xml") }
                     xml { PersonDto(firstame = "Bill", lastname = "Anderson") }
                 }
             }

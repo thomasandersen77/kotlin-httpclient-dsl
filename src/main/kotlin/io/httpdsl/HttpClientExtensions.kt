@@ -1,6 +1,5 @@
 package io.httpdsl
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import java.net.http.HttpClient
 import java.net.http.HttpResponse
 
