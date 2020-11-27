@@ -7,20 +7,19 @@ import java.util.*
 object UriExpander {
     fun expand(uriTemplate: String, vararg uriVariables: Any): URI {
         Objects.requireNonNull(uriTemplate, "Url required, was null")
-        var url: String
         require(!((uriTemplate.contains("{") || uriTemplate.contains("}")) && uriVariables.isEmpty())) { "Missing uriVariables" }
-        if (!uriTemplate.contains("{") || uriVariables.isEmpty()) {
-            url = uriTemplate
-        } else {
-            url = uriTemplate
-            for (uriVariable in uriVariables) {
-                url = replaceWithValue(url, uriVariable)
-            }
-        }
         return try {
-            URI(url)
+            if (!uriTemplate.contains("{") || uriVariables.isEmpty()) {
+                URI(uriTemplate)
+            } else {
+                var url = ""
+                uriVariables.forEach {
+                    url = replaceWithValue(uriTemplate, it)
+                }
+                URI(url)
+            }
         } catch (e: URISyntaxException) {
-            throw IllegalArgumentException("Malformed url: [$url]")
+            throw IllegalArgumentException(e)
         }
     }
 
