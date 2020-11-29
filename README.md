@@ -16,9 +16,7 @@ A simple DSL on top of Java's HttpClient for easy, structured integration with o
                     }
                 }
                 body {
-                    contentType {
-                        arrayOf("application/json")
-                    }
+                    contentType { arrayOf("application/json") }
                     json { PersonDto( firstame = "Bill", lastname = "Anderson") }
                 }
             }
