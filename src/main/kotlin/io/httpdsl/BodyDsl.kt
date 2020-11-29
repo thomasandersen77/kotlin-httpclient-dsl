@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.xml.XmlMapper
 import java.net.http.HttpRequest
 
-class BodyDsl internal constructor(var requestBuilder : HttpRequest.Builder) {
+class BodyDsl internal constructor(private val requestBuilder : HttpRequest.Builder) {
 
 
     fun contentType(contentType : () -> Array<String>) {

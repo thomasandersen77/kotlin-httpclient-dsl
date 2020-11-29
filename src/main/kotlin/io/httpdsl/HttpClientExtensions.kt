@@ -5,10 +5,6 @@ import java.net.http.HttpResponse
 
 class HttpClientDsl(val baseUrl: String) {
     var connectionTimeout: Long? = null
-
-    fun body(body: HttpClientDsl.() -> Unit) {
-        body.invoke(this)
-    }
 }
 
 fun HttpClientDsl.post(path: String, vararg uriVariables: String, requestDsl: RequestDsl.() -> Unit = {}): HttpResponse<*> {
@@ -35,6 +31,6 @@ fun HttpClientDsl.delete(path: String, vararg uriVariables: String, requestDsl: 
     return RequestDsl(builder).apply(requestDsl).exchange("${this.baseUrl}${expandedPath}", "GET")
 }
 
-fun HttpResponse<*>.bodyString() : String {
+fun HttpResponse<*>.bodyAsString() : String {
     return this.body().toString()
 }

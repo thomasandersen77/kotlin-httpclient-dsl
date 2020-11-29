@@ -5,32 +5,26 @@ import com.github.tomakehurst.wiremock.client.WireMock.*
 import com.github.tomakehurst.wiremock.common.ConsoleNotifier
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration
 import com.github.tomakehurst.wiremock.matching.EqualToXmlPattern
-import org.junit.jupiter.api.AfterEach
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.*
 import java.util.*
 import kotlin.test.assertEquals
 
 class DslTest {
 
-    private val wiremock = WireMockServer(WireMockConfiguration()
-            .dynamicPort()
-            .notifier(ConsoleNotifier(true)))
-
     @Test
     internal fun `simple example request`() {
         val http = HttpClientDsl("http://localhost:${wiremock.port()}")
 
-        val response = http.get("/admin/ping") 
+        val response = http.get("/admin/ping")
 
         assertEquals(200, response.statusCode())
-        assertEquals("pong", response.bodyString())
+        assertEquals("pong", response.bodyAsString())
     }
 
     @Test
     internal fun `perform get-request and prvoide a function that calls ping before get-request is sent`() {
         val http = HttpClientDsl("http://localhost:${wiremock.port()}")
-        val supplierFunction: () -> String = { http.get("/admin/ping").bodyString() }
+        val supplierFunction: () -> String = { http.get("/admin/ping").bodyAsString() }
 
         val response = http.get("/admin/{uriVariable}", "ping") {
             request {
@@ -40,9 +34,7 @@ class DslTest {
                     header("supplier", supplierFunction)
                 }
                 body {
-                    contentType {
-                        arrayOf("application/json")
-                    }
+                    contentType { arrayOf("application/json") }
                     json { PersonDto(firstame = "Bill", lastname = "Anderson") }
                 }
             }
@@ -88,20 +80,26 @@ class DslTest {
 
         // then assert
         assertEquals(200, response.statusCode())
-        assertEquals("<status>success</status>", response.bodyString())
+        assertEquals("<status>success</status>", response.bodyAsString())
     }
 
-    @BeforeEach
-    internal fun startWiremock() {
-        wiremock.start()
-        wiremock.stubFor(get(urlEqualTo("/admin/ping"))
-                .willReturn(aResponse()
-                        .withStatus(200)
-                        .withBody("pong")));
-    }
+    companion object {
+        private val wiremock = WireMockServer(WireMockConfiguration()
+                .dynamicPort()
+                .notifier(ConsoleNotifier(true)))
 
-    @AfterEach
-    internal fun tearDown() {
-        wiremock.stop()
+        @BeforeAll @JvmStatic
+        internal fun startWiremock() {
+            wiremock.start()
+            wiremock.stubFor(get(urlEqualTo("/admin/ping"))
+                    .willReturn(aResponse()
+                            .withStatus(200)
+                            .withBody("pong")));
+        }
+
+        @AfterAll @JvmStatic
+        internal fun tearDown() {
+            wiremock.stop()
+        }
     }
 }

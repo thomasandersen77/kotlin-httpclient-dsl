@@ -17,6 +17,10 @@ class RequestDsl internal constructor(private val clientBuilder: HttpClient.Buil
         content = bdsl.invoke(bodyDsl)
     }
 
+    fun headers(headers: HeaderDsl.() -> Unit) {
+        headers.invoke(headerDsl)
+    }
+
     fun request(body: RequestDsl.() -> Unit) {
         body.invoke(this)
     }
@@ -25,19 +29,16 @@ class RequestDsl internal constructor(private val clientBuilder: HttpClient.Buil
         requestBuilder.timeout(Duration.ofSeconds(timeout.invoke().toLong()))
     }
 
-    fun headers(headers: HeaderDsl.() -> Unit) {
-        headers.invoke(headerDsl)
-    }
-
     internal fun exchange(url: String, method: String): HttpResponse<*> {
         if (method in arrayOf("PUT", "POST"))
-            requestBuilder.method(method, HttpRequest.BodyPublishers.ofString(content))
+            content?.let { requestBuilder.method(method, HttpRequest.BodyPublishers.ofString(content)) }
         else {
             requestBuilder.method(method, HttpRequest.BodyPublishers.noBody())
         }
 
         requestBuilder.uri(URI.create(url))
         return clientBuilder
-                .build().send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString())
+                .build()
+                .send(requestBuilder.uri(URI.create(url)).build(), HttpResponse.BodyHandlers.ofString())
     }
 }
