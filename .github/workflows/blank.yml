@@ -59,7 +59,8 @@ jobs:
         # uses: monkeyWie/maven-nexus-release@194ac626668559a29c912733eac448053a3f5f9c
         uses: monkeyWie/maven-nexus-release@v1.0.0
         with:
+          maven-args: "-Dmaven.javadoc.skip=true -DskipTests -DskipITs -Ddockerfile.skip -DdockerCompose.skip"
           # Maven server repository username
-          maven-repo-server-username: 
+          #maven-repo-server-username: 
           # Maven server repository password
-          maven-repo-server-password: 
+          #maven-repo-server-password: 
