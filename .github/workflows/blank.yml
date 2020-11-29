@@ -41,7 +41,7 @@ jobs:
           # The architecture (x86, x64) of the package.
           architecture: x64
           # Path to where the compressed JDK is located. The path could be in your source repository or a local path on the agent.
-          jdkFile: /usr/bin/java 
+          # jdkFile: # Optional
           # ID of the distributionManagement repository in the pom.xml file. Default is `github`
           # server-id: # optional, default is github
           # Environment variable name for the username for authentication to the Apache Maven repository. Default is $GITHUB_ACTOR
