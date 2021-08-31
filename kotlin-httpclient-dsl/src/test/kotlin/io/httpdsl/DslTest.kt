@@ -6,6 +6,8 @@ import com.github.tomakehurst.wiremock.common.ConsoleNotifier
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration
 import com.github.tomakehurst.wiremock.matching.EqualToXmlPattern
 import org.junit.jupiter.api.*
+import java.time.Duration
+import java.time.Duration.*
 import java.util.*
 import kotlin.test.assertEquals
 
@@ -22,13 +24,14 @@ class DslTest {
     }
 
     @Test
-    internal fun `perform get-request and prvoide a function that calls ping before get-request is sent`() {
+    internal fun `perform get-request and provide a function that calls ping before the get-request is sent`() {
         val http = HttpClientDsl("http://localhost:${wiremock.port()}")
         val supplierFunction: () -> String = { http.get("/admin/ping").bodyAsString() }
 
         val response = http.get("/admin/{uriVariable}", "ping") {
             request {
-                timeout { 20 }
+                connectTimeout = ofSeconds(10)
+                requestTimeout = ofSeconds(20)
                 headers {
                     header("header1", "value1")
                     header("supplier", supplierFunction)
@@ -67,7 +70,7 @@ class DslTest {
         // start DSL
         val response = http.post("/xml/{uriVariable}", "ping") {
             request {
-                timeout { 20 }
+                requestTimeout = ofSeconds(20)
                 headers {
                     authorization { login("user", "pass") }
                 }

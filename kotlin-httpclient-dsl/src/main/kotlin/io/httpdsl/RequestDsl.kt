@@ -12,6 +12,8 @@ class RequestDsl internal constructor(private val clientBuilder: HttpClient.Buil
     private val headerDsl: HeaderDsl = HeaderDsl(requestBuilder)
 
     var content: String? = null
+    var connectTimeout: Duration = Duration.ofSeconds(30)
+    var requestTimeout: Duration = Duration.ofSeconds(30)
 
     fun body(bdsl: BodyDsl.() -> String) {
         content = bdsl.invoke(bodyDsl)
@@ -25,20 +27,24 @@ class RequestDsl internal constructor(private val clientBuilder: HttpClient.Buil
         body.invoke(this)
     }
 
-    fun timeout(timeout: () -> Int) {
-        requestBuilder.timeout(Duration.ofSeconds(timeout.invoke().toLong()))
-    }
-
     internal fun exchange(url: String, method: String): HttpResponse<*> {
         if (method in arrayOf("PUT", "POST"))
-            content?.let { requestBuilder.method(method, HttpRequest.BodyPublishers.ofString(content)) }
+            content?.let {
+                requestBuilder.apply {
+                    method(method, HttpRequest.BodyPublishers.ofString(content))
+                }
+            }
         else {
-            requestBuilder.method(method, HttpRequest.BodyPublishers.noBody())
+            requestBuilder.apply {
+                method(method, HttpRequest.BodyPublishers.noBody())
+            }
         }
 
-        requestBuilder.uri(URI.create(url))
-        return clientBuilder
-                .build()
-                .send(requestBuilder.uri(URI.create(url)).build(), HttpResponse.BodyHandlers.ofString())
+        requestBuilder.apply {
+            timeout(requestTimeout)
+            uri(URI.create(url))
+        }
+        return clientBuilder.apply { connectTimeout(connectTimeout) }.build()
+            .send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString())
     }
 }

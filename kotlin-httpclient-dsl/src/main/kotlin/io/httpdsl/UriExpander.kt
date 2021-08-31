@@ -4,8 +4,9 @@ import java.net.URI
 import java.net.URISyntaxException
 
 object UriExpander {
+
     fun expand(uriTemplate: String, vararg uriVariables: Any): URI {
-        require(!((uriTemplate.contains("{") || uriTemplate.contains("}")) && uriVariables.isEmpty())) {
+        require( !(uriTemplate.contains("{") && uriTemplate.contains("}") && uriVariables.isEmpty()) ) {
             "Missing uriVariables"
         }
         return try {

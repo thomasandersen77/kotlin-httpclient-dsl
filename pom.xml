@@ -2,8 +2,26 @@
    <modelVersion>4.0.0</modelVersion>
 
    <groupId>io.httpdsl</groupId>
-   <artifactId>kotlin-httpclient-dsl</artifactId>
+   <artifactId>kotlin-jdk-httpclient-samples</artifactId>
    <version>0.0.1-SNAPSHOT</version>
+   <packaging>pom</packaging>
+
+   <modules>
+      <module>kotlin-httpclient-dsl</module>
+      <module>kotlin-httpclient-functions</module>
+   </modules>
+
+   <dependencyManagement>
+      <dependencies>
+         <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-dependencies</artifactId>
+            <version>2.4.5</version>
+            <type>pom</type>
+            <scope>import</scope>
+         </dependency>
+      </dependencies>
+   </dependencyManagement>
 
    <properties>
       <wiremock.version>2.27.2</wiremock.version>
@@ -85,6 +103,11 @@
          <version>5.2.10.RELEASE</version>
          <scope>test</scope>
       </dependency>
+      <dependency>
+         <groupId>org.junit.vintage</groupId>
+         <artifactId>junit-vintage-engine</artifactId>
+         <scope>test</scope>
+      </dependency>
    </dependencies>
    <build>
       <plugins>
@@ -117,7 +140,7 @@
                </execution>
             </executions>
             <configuration>
-               <jvmTarget>11</jvmTarget>
+               <jvmTarget>16</jvmTarget>
             </configuration>
          </plugin>
       </plugins>
