@@ -96,7 +96,6 @@ fun HttpRequest.execute(): String {
  JSON STUFF
  */
 val mapper: ObjectMapper = ObjectMapper()
-    .registerModule(KotlinModule())
     .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
 fun <T> String.asType(type: Class<T>): T {
