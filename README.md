@@ -27,7 +27,7 @@ A simple DSL on top of Java's HttpClient for easy, structured integration with o
 
 ```kotlin
 
-    @Test
+        @Test
     internal fun postRequestForFoo() {
         val requestConfig = RequestConfig(
             url = "http://localhost",
@@ -41,8 +41,11 @@ A simple DSL on top of Java's HttpClient for easy, structured integration with o
         assertNotNull(result)
         assertEquals("bar", result.name)
 
-        wiremock.verify(1, postRequestedFor(
-            urlEqualTo("/api/foo?type=bar"))
-            .withHeader("Authorization", equalTo("dXNlcjpwYXNz")))
+        wiremock.verify(
+            1, postRequestedFor(
+                urlEqualTo("/api/foo?type=bar")
+            )
+                .withHeader("Authorization", equalTo("dXNlcjpwYXNz"))
+        )
     }
 ````
