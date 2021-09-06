@@ -27,7 +27,7 @@ A simple DSL on top of Java's HttpClient for easy, structured integration with o
 
 ```kotlin
 
-        @Test
+    @Test
     internal fun postRequestForFoo() {
         val requestConfig = RequestConfig(
             url = "http://localhost",
