@@ -24,6 +24,24 @@ class DslTest {
     }
 
     @Test
+    internal fun `simple post`() {
+        val http = HttpClientDsl("http://localhost:${wiremock.port()}")
+
+        val response = http.post("/person") {
+            request {
+                body {
+                    json { PersonDto("first", "last") }
+                }
+            }
+        }
+
+        assertEquals(200, response.statusCode())
+
+        wiremock.verify(postRequestedFor(urlEqualTo("/person"))
+            .withRequestBody(equalTo("{\"firstame\":\"first\",\"lastname\":\"last\"}")))
+    }
+
+    @Test
     internal fun `perform get-request and provide a function that calls ping before the get-request is sent`() {
         val http = HttpClientDsl("http://localhost:${wiremock.port()}")
         val supplierFunction: () -> String = { http.get("/admin/ping").bodyAsString() }
@@ -45,6 +63,10 @@ class DslTest {
 
         assertEquals(200, response.statusCode())
         assertEquals("pong", response.body())
+
+        wiremock.verify(
+            getRequestedFor(urlEqualTo("/admin/ping"))
+            .withHeader("Content-type", equalTo("application/json")))
     }
 
     @Test
@@ -61,7 +83,7 @@ class DslTest {
                         .withBody("<status>success</status>")))
 
         fun login(user: String, pass: String): String { // anonymous function for simulating a login
-            println("simuler login med user=$user pass=$pass")
+            println("simulate login: user=$user pass=$pass")
             return authHeaderValue
         }
 
@@ -73,6 +95,7 @@ class DslTest {
                 requestTimeout = ofSeconds(20)
                 headers {
                     authorization { login("user", "pass") }
+                    header("Accept" , "application/xml")
                 }
                 body {
                     contentType { arrayOf("application/xml") }
@@ -84,6 +107,10 @@ class DslTest {
         // then assert
         assertEquals(200, response.statusCode())
         assertEquals("<status>success</status>", response.bodyAsString())
+
+        wiremock.verify(postRequestedFor(urlEqualTo("/xml/ping"))
+            .withHeader("Accept", equalTo("application/xml"))
+            .withHeader("Authorization", equalTo(authHeaderValue)))
     }
 
     companion object {
@@ -98,6 +125,10 @@ class DslTest {
                     .willReturn(aResponse()
                             .withStatus(200)
                             .withBody("pong")));
+
+            wiremock.stubFor(post(urlEqualTo("/person"))
+                .willReturn(aResponse()
+                    .withStatus(200)))
         }
 
         @AfterAll @JvmStatic
