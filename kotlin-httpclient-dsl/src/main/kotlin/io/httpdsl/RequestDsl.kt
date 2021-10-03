@@ -12,20 +12,26 @@ class RequestDsl internal constructor(private val clientBuilder: HttpClient.Buil
     private val headerDsl: HeaderDsl = HeaderDsl(requestBuilder)
 
     var content: String? = null
+    var path: String? = null
     var connectTimeout: Duration = Duration.ofSeconds(30)
     var requestTimeout: Duration = Duration.ofSeconds(30)
 
-    fun body(bdsl: BodyDsl.() -> String) {
+    infix fun body(bdsl: BodyDsl.() -> String) {
         content = bdsl.invoke(bodyDsl)
     }
 
-    fun headers(headers: HeaderDsl.() -> Unit) {
+    infix fun headers(headers: HeaderDsl.() -> Unit) {
         headers.invoke(headerDsl)
     }
 
-    fun request(body: RequestDsl.() -> Unit) {
+    infix fun request(body: RequestDsl.() -> Unit) {
         body.invoke(this)
     }
+
+    infix fun path(path : String) {
+        this.path = path
+    }
+
 
     internal fun exchange(url: String, method: String): HttpResponse<*> {
         if (method in arrayOf("PUT", "POST"))
@@ -39,6 +45,7 @@ class RequestDsl internal constructor(private val clientBuilder: HttpClient.Buil
                 method(method, HttpRequest.BodyPublishers.noBody())
             }
         }
+
 
         requestBuilder.apply {
             timeout(requestTimeout)

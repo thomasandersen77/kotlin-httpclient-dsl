@@ -57,14 +57,14 @@ internal class FooHttpClientTest {
 
     @Test
     internal fun postRequestForFoo() {
-        val requestConfig = RequestConfig(
+
+        val result = FooHttpClient(config = RequestConfig(
             url = "http://localhost",
             port = wiremock.port(),
             username = "user",
             password = "pass"
 
-        )
-        val result = FooHttpClient(config = requestConfig).getTypeByName("bar", Foo("bar"))
+        )).getTypeByName("bar", Foo("bar"))
 
         assertNotNull(result)
         assertEquals("bar", result.name)

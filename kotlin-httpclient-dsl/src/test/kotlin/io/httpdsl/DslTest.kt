@@ -5,9 +5,10 @@ import com.github.tomakehurst.wiremock.client.WireMock.*
 import com.github.tomakehurst.wiremock.common.ConsoleNotifier
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration
 import com.github.tomakehurst.wiremock.matching.EqualToXmlPattern
-import org.junit.jupiter.api.*
-import java.time.Duration
-import java.time.Duration.*
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Test
+import java.time.Duration.ofSeconds
 import java.util.*
 import kotlin.test.assertEquals
 
@@ -25,13 +26,15 @@ class DslTest {
 
     @Test
     internal fun `simple post`() {
+        wiremock.stubFor(post(urlEqualTo("/person"))
+            .willReturn(aResponse()
+                .withStatus(200)))
+
         val http = HttpClientDsl("http://localhost:${wiremock.port()}")
 
         val response = http.post("/person") {
             request {
-                body {
-                    json { PersonDto("first", "last") }
-                }
+                body { json { PersonDto("first", "last") } }
             }
         }
 
@@ -44,7 +47,7 @@ class DslTest {
     @Test
     internal fun `perform get-request and provide a function that calls ping before the get-request is sent`() {
         val http = HttpClientDsl("http://localhost:${wiremock.port()}")
-        val supplierFunction: () -> String = { http.get("/admin/ping").bodyAsString() }
+        val supplierFunction: () -> String = { http.get ("/admin/ping").bodyAsString() }
 
         val response = http.get("/admin/{uriVariable}", "ping") {
             request {
@@ -69,6 +72,7 @@ class DslTest {
             .withHeader("Content-type", equalTo("application/json")))
     }
 
+
     @Test
     internal fun `post an xml-body and add a function for providing authorization header in dsl`() {
         // set up
@@ -87,9 +91,9 @@ class DslTest {
             return authHeaderValue
         }
 
+        // start DSL
         val http = HttpClientDsl("http://localhost:${wiremock.port()}")
 
-        // start DSL
         val response = http.post("/xml/{uriVariable}", "ping") {
             request {
                 requestTimeout = ofSeconds(20)
@@ -126,9 +130,6 @@ class DslTest {
                             .withStatus(200)
                             .withBody("pong")));
 
-            wiremock.stubFor(post(urlEqualTo("/person"))
-                .willReturn(aResponse()
-                    .withStatus(200)))
         }
 
         @AfterAll @JvmStatic

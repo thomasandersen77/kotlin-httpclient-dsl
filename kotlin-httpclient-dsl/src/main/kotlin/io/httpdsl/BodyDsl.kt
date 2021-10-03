@@ -7,13 +7,13 @@ import java.net.http.HttpRequest
 class BodyDsl internal constructor(private val requestBuilder : HttpRequest.Builder) {
 
 
-    fun contentType(contentType : () -> Array<String>) {
+    infix fun contentType(contentType : () -> Array<String>) {
         contentType.invoke().iterator().forEach {
             requestBuilder.header("Content-Type", it)
         }
     }
 
-    fun json(value : () -> Any) : String {
+    infix fun json(value : () -> Any) : String {
         return ObjectMapper().writeValueAsString(value.invoke())
     }
 

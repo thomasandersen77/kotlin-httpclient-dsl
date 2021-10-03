@@ -3,6 +3,7 @@ package no.co_pilot_cli.template.client.config
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.module.kotlin.KotlinModule
+import no.co_pilot_cli.template.client.config.Method.*
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -35,16 +36,20 @@ internal enum class Method(val value: String) {
     Functions for executing HTTP requests
 */
 fun <T> httpGet(config: RequestConfig, path: String, responseType: Class<T>): T =
-    config.buildRequest(method = Method.GET, body = null, path = path).execute().asType(responseType)
+    config.buildRequest(method = GET, body = null, path = path)
+        .execute() asType responseType
 
 fun <T> httpPost(config: RequestConfig, body: Any, path: String, responseType: Class<T>): T =
-    config.buildRequest(method = Method.POST, body = body, path = path).execute().asType(responseType)
+    config.buildRequest(method = POST, body = body, path = path)
+        .execute() asType responseType
 
 fun <T> httpPut(config: RequestConfig, body: Any, path: String, responseType: Class<T>): T =
-    config.buildRequest(method = Method.PUT, body = body, path = path).execute().asType(responseType)
+    config.buildRequest(method = PUT, body = body, path = path)
+        .execute() asType responseType
 
 fun <T> httpDelete(config: RequestConfig, path: String, responseType: Class<T>): T =
-    config.buildRequest(method = Method.DELETE, body = null, path = path).execute().asType(responseType)
+    config.buildRequest(method = DELETE, body = null, path = path)
+        .execute() asType responseType
 
 /*
     Build the Request
@@ -55,10 +60,10 @@ internal fun RequestConfig.buildRequest(method: Method, body: Any?, path: String
             URI("${this.url}:${this.port}$path")
         ).let {
             when (method) {
-                Method.GET -> it.method("GET", HttpRequest.BodyPublishers.noBody())
-                Method.DELETE -> it.method("DELETE", HttpRequest.BodyPublishers.noBody())
-                Method.POST -> it.method("POST", HttpRequest.BodyPublishers.ofString(body.asJson(), Charsets.UTF_8))
-                Method.PUT -> it.method("PUT", HttpRequest.BodyPublishers.ofString(body.asJson(), Charsets.UTF_8))
+                GET -> it.method(GET.value, HttpRequest.BodyPublishers.noBody())
+                DELETE -> it.method(DELETE.value, HttpRequest.BodyPublishers.noBody())
+                POST -> it.method(POST.value, HttpRequest.BodyPublishers.ofString(body.asJson(), Charsets.UTF_8))
+                PUT -> it.method(PUT.value, HttpRequest.BodyPublishers.ofString(body.asJson(), Charsets.UTF_8))
             }
 
         }.header("Content-Type", "application/json")
@@ -98,7 +103,7 @@ fun HttpRequest.execute(): String {
 val mapper: ObjectMapper = ObjectMapper()
     .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
-fun <T> String.asType(type: Class<T>): T {
+infix fun <T> String.asType(type: Class<T>): T {
     return mapper.readValue(this, type)
 }
 
