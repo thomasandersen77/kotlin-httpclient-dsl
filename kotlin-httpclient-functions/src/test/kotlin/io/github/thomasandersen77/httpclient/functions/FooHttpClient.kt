@@ -1,4 +1,4 @@
-package io.httpdsl.functions
+package io.github.thomasandersen77.httpclient.functions
 
 
 class FooHttpClient(private val config: RequestConfig) {

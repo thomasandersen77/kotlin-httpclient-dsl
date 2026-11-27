@@ -1,4 +1,4 @@
-package io.httpdsl.functions
+package io.github.thomasandersen77.httpclient.functions
 
 import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.client.WireMock.*
@@ -611,8 +611,8 @@ internal class FooHttpClientTest {
         val fetches = AtomicInteger(0)
         val config = RequestConfig(url = base, authorization = Authorization.cachedBearer { "s3cret-${fetches.incrementAndGet()}" })
 
-        assertFalse(System.getLogger("io.httpdsl.functions").isLoggable(System.Logger.Level.DEBUG), "silent until DEBUG is switched on")
-        val lines = debugLinesOf("io.httpdsl.functions") {
+        assertFalse(System.getLogger("io.github.thomasandersen77.httpclient.functions").isLoggable(System.Logger.Level.DEBUG), "silent until DEBUG is switched on")
+        val lines = debugLinesOf("io.github.thomasandersen77.httpclient.functions") {
             RequestConfig(url = base).get<Unit>("/api/logged", queryParams = mapOf("api_key" to "s3cret-key"))
             config.get<Unit>("/api/logged-expiring")
             assertThrows(HttpTimeoutException::class.java) {

@@ -1,4 +1,4 @@
-package io.httpdsl.functions
+package io.github.thomasandersen77.httpclient.functions
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse

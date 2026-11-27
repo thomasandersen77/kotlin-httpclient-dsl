@@ -1,4 +1,4 @@
-package io.httpdsl.functions
+package io.github.thomasandersen77.httpclient.functions
 
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets

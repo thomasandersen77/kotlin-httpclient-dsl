@@ -1,4 +1,4 @@
-package io.httpdsl
+package io.github.thomasandersen77.httpclient.dsl
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.DeserializationFeature

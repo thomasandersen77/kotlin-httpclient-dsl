@@ -1,4 +1,4 @@
-package io.httpdsl.functions
+package io.github.thomasandersen77.httpclient.functions
 
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException

@@ -1,4 +1,4 @@
-package io.httpdsl
+package io.github.thomasandersen77.httpclient.dsl
 
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.PropertyNamingStrategies
@@ -735,8 +735,8 @@ class DslTest {
         var fetches = 0
         val http = HttpClientDsl(base, authorization = Authorization.cachedBearer { "s3cret-${++fetches}" })
 
-        assertTrue(!System.getLogger("io.httpdsl").isLoggable(System.Logger.Level.DEBUG), "silent until DEBUG is switched on")
-        val lines = debugLinesOf("io.httpdsl") {
+        assertTrue(!System.getLogger("io.github.thomasandersen77.httpclient.dsl").isLoggable(System.Logger.Level.DEBUG), "silent until DEBUG is switched on")
+        val lines = debugLinesOf("io.github.thomasandersen77.httpclient.dsl") {
             http.get("/logged") { withoutAuthorization(); queryParam("api_key", "s3cret-key") }
             http.get("/logged-expiring")
             assertFailsWith<HttpTimeoutException> { http.get("/logged-slow") { requestTimeout = ofMillis(100) } }

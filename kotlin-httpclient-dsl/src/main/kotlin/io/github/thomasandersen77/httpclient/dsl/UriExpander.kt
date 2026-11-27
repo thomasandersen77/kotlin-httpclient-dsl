@@ -1,4 +1,4 @@
-package io.httpdsl
+package io.github.thomasandersen77.httpclient.dsl
 
 import java.net.URI
 import java.net.URISyntaxException

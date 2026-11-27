@@ -1,12 +1,12 @@
-package io.httpdsl.functions
+package io.github.thomasandersen77.httpclient.functions
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import io.httpdsl.functions.Method.DELETE
-import io.httpdsl.functions.Method.GET
-import io.httpdsl.functions.Method.PATCH
-import io.httpdsl.functions.Method.POST
-import io.httpdsl.functions.Method.PUT
+import io.github.thomasandersen77.httpclient.functions.Method.DELETE
+import io.github.thomasandersen77.httpclient.functions.Method.GET
+import io.github.thomasandersen77.httpclient.functions.Method.PATCH
+import io.github.thomasandersen77.httpclient.functions.Method.POST
+import io.github.thomasandersen77.httpclient.functions.Method.PUT
 import java.net.http.HttpHeaders
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse

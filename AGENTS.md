@@ -24,8 +24,8 @@ The root Maven reactor contains **two** modules:
 
 | Module | Purpose | Main package |
 | --- | --- | --- |
-| `kotlin-httpclient-dsl` | Receiver-lambda DSL for requests, headers and JSON/raw bodies | `io.httpdsl` |
-| `kotlin-httpclient-functions` | Function-based HTTP helpers on `RequestConfig` | `io.httpdsl.functions` |
+| `kotlin-httpclient-dsl` | Receiver-lambda DSL for requests, headers and JSON/raw bodies | `io.github.thomasandersen77.httpclient.dsl` |
+| `kotlin-httpclient-functions` | Function-based HTTP helpers on `RequestConfig` | `io.github.thomasandersen77.httpclient.functions` |
 
 Each module is meant to be used as one dependency. They must stay independent of each other.
 
@@ -152,7 +152,7 @@ Each module is meant to be used as one dependency. They must stay independent of
 ### Logging (both modules)
 
 Each module has an internal `Logging.kt` with the same content apart from the package and the
-logger name (`io.httpdsl`, `io.httpdsl.functions`). It uses `System.Logger`, never SLF4J or any
+logger name (`io.github.thomasandersen77.httpclient.dsl`, `io.github.thomasandersen77.httpclient.functions`). It uses `System.Logger`, never SLF4J or any
 other logging dependency, and logs only at `DEBUG` with lazy `Supplier` messages:
 
 - one line per response: `<METHOD> <url> -> <status> in <n> ms`

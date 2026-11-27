@@ -1,4 +1,4 @@
-package io.httpdsl.functions
+package io.github.thomasandersen77.httpclient.dsl
 
 import java.lang.System.Logger.Level
 import java.net.URI
@@ -7,11 +7,11 @@ import java.util.function.Supplier
 
 /*
  * Debug logging through the JDK's own System.Logger, so the library needs no logging dependency.
- * Everything is logged at DEBUG under the logger name "io.httpdsl.functions" and is silent until that level is
+ * Everything is logged at DEBUG under the logger name "io.github.thomasandersen77.httpclient.dsl" and is silent until that level is
  * switched on. A line names the method, the URL and the outcome; it never contains the query
  * string, user info, headers or bodies.
  */
-private val logger: System.Logger = System.getLogger("io.httpdsl.functions")
+private val logger: System.Logger = System.getLogger("io.github.thomasandersen77.httpclient.dsl")
 
 internal fun startTimer(): Long = System.nanoTime()
 

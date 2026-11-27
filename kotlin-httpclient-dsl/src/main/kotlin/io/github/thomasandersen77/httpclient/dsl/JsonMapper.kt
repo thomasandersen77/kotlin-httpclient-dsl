@@ -1,4 +1,4 @@
-package io.httpdsl
+package io.github.thomasandersen77.httpclient.dsl
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
