@@ -231,6 +231,8 @@ and do not log real authorization values.
 The library is licensed under Apache 2.0 (`LICENSE`). Versions follow semantic versioning: since
 1.0.0 a breaking change to the public API of either module needs a new major version. A release
 is the tag `v<version>` on `master`; `master` itself carries the next `-SNAPSHOT` version.
+Version 1.0.0 was published to Maven Central on 2026-11-27; a published version can never be
+changed or removed, so a fix always means a new version.
 
 The `release` profile in the root POM adds what Maven Central requires: a sources jar, a javadoc
 jar (it only holds the README and the licence; the API documentation is the KDoc in the sources),

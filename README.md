@@ -50,9 +50,7 @@ Use **`httpkt-dsl`** when you want to shape each request and inspect responses; 
 
 ## Installation
 
-Requires **Java 11** or newer. Current version: **`1.0.0`**.
-
-> Until `1.0.0` is synced on Maven Central, check out tag `v1.0.0` and run `mvn install` locally.
+Requires **Java 11** or newer. Current version: **`1.0.0`**, available on [Maven Central](https://central.sonatype.com/namespace/io.github.httpkt).
 
 ### Maven
 
