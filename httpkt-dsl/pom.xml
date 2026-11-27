@@ -11,6 +11,13 @@
     <artifactId>httpkt-dsl</artifactId>
     <name>httpkt-dsl</name>
     <description>A Kotlin DSL for calling HTTP APIs on the JDK's own HttpClient, with Jackson for JSON.</description>
+    <!-- Stated here because Maven would otherwise append the module name to the inherited values. -->
+    <url>https://github.com/httpkt/httpkt</url>
+    <scm>
+        <connection>scm:git:https://github.com/httpkt/httpkt.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/httpkt/httpkt.git</developerConnection>
+        <url>https://github.com/httpkt/httpkt</url>
+    </scm>
 
     <dependencies>
         <dependency>
