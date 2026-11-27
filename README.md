@@ -23,14 +23,14 @@ mostly want a typed result back in one line.
 
 ## Installing
 
-The library is not published to a public repository yet. Build it into your local repository with
-`mvn install`, then add **one** of:
+The current version is **1.0.0**. It is not on Maven Central yet, so for now check out the tag
+`v1.0.0` and build it into your local repository with `mvn install`. Then add **one** of:
 
 ```xml
 <dependency>
     <groupId>io.github.httpkt</groupId>
     <artifactId>httpkt-dsl</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.0.0</version>
 </dependency>
 ```
 
@@ -38,7 +38,7 @@ The library is not published to a public repository yet. Build it into your loca
 <dependency>
     <groupId>io.github.httpkt</groupId>
     <artifactId>httpkt-functions</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.0.0</version>
 </dependency>
 ```
 
@@ -417,3 +417,9 @@ Behaviour that is easy to trip over:
 **Both modules**
 - The token fetch inside `cachedBearer` runs while a lock is held, so concurrent requests wait for one token instead of each fetching one. Do not hand the fetch to another thread that uses the same authorization.
 - The two modules have their own exception types: `HttpStatusException` (DSL) and `HttpException` with `HttpClientException` / `HttpServerException` (functions).
+
+---
+
+## License
+
+[Apache License 2.0](LICENSE).

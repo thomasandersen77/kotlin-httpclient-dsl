@@ -1,10 +1,39 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd"
+         child.project.url.inherit.append.path="false">
    <modelVersion>4.0.0</modelVersion>
 
    <groupId>io.github.httpkt</groupId>
    <artifactId>httpkt-parent</artifactId>
-   <version>0.0.1-SNAPSHOT</version>
+   <version>1.0.0</version>
    <packaging>pom</packaging>
+
+   <name>httpkt</name>
+   <description>Small Kotlin libraries for calling HTTP APIs on the JDK's own HttpClient, with Jackson as the only dependency.</description>
+   <url>https://github.com/httpkt/httpkt</url>
+
+   <licenses>
+      <license>
+         <name>Apache License, Version 2.0</name>
+         <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+         <distribution>repo</distribution>
+      </license>
+   </licenses>
+
+   <developers>
+      <developer>
+         <id>thomasandersen77</id>
+         <name>Thomas Andersen</name>
+         <url>https://github.com/thomasandersen77</url>
+      </developer>
+   </developers>
+
+   <scm child.scm.connection.inherit.append.path="false"
+        child.scm.developerConnection.inherit.append.path="false"
+        child.scm.url.inherit.append.path="false">
+      <connection>scm:git:https://github.com/httpkt/httpkt.git</connection>
+      <developerConnection>scm:git:ssh://git@github.com/httpkt/httpkt.git</developerConnection>
+      <url>https://github.com/httpkt/httpkt</url>
+   </scm>
 
    <modules>
       <module>httpkt-dsl</module>
@@ -131,6 +160,81 @@
          </plugin>
       </plugins>
    </build>
+
+   <profiles>
+      <!--
+         Everything Maven Central asks for beyond the plain build: a sources jar, a javadoc jar,
+         GPG signatures and the upload itself. Used as: mvn -Prelease deploy
+         It needs a GPG key and a Central Portal token (server id "central") in ~/.m2/settings.xml.
+      -->
+      <profile>
+         <id>release</id>
+         <build>
+            <plugins>
+               <plugin>
+                  <groupId>org.apache.maven.plugins</groupId>
+                  <artifactId>maven-source-plugin</artifactId>
+                  <version>3.3.1</version>
+                  <executions>
+                     <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                           <goal>jar-no-fork</goal>
+                        </goals>
+                     </execution>
+                  </executions>
+               </plugin>
+               <plugin>
+                  <!-- Central requires a javadoc jar. The API documentation is the KDoc in the sources
+                       jar and the README, so this jar only carries the README and the licence. -->
+                  <groupId>org.apache.maven.plugins</groupId>
+                  <artifactId>maven-jar-plugin</artifactId>
+                  <version>3.4.2</version>
+                  <executions>
+                     <execution>
+                        <id>javadoc-jar</id>
+                        <phase>package</phase>
+                        <goals>
+                           <goal>jar</goal>
+                        </goals>
+                        <configuration>
+                           <classifier>javadoc</classifier>
+                           <classesDirectory>${maven.multiModuleProjectDirectory}</classesDirectory>
+                           <includes>
+                              <include>README.md</include>
+                              <include>LICENSE</include>
+                           </includes>
+                        </configuration>
+                     </execution>
+                  </executions>
+               </plugin>
+               <plugin>
+                  <groupId>org.apache.maven.plugins</groupId>
+                  <artifactId>maven-gpg-plugin</artifactId>
+                  <version>3.2.7</version>
+                  <executions>
+                     <execution>
+                        <id>sign-artifacts</id>
+                        <phase>verify</phase>
+                        <goals>
+                           <goal>sign</goal>
+                        </goals>
+                     </execution>
+                  </executions>
+               </plugin>
+               <plugin>
+                  <groupId>org.sonatype.central</groupId>
+                  <artifactId>central-publishing-maven-plugin</artifactId>
+                  <version>0.8.0</version>
+                  <extensions>true</extensions>
+                  <configuration>
+                     <publishingServerId>central</publishingServerId>
+                  </configuration>
+               </plugin>
+            </plugins>
+         </build>
+      </profile>
+   </profiles>
 </project>
 
 

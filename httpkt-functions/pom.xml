@@ -4,10 +4,12 @@
    <parent>
       <groupId>io.github.httpkt</groupId>
       <artifactId>httpkt-parent</artifactId>
-      <version>0.0.1-SNAPSHOT</version>
+      <version>1.0.0</version>
    </parent>
 
    <artifactId>httpkt-functions</artifactId>
+   <name>httpkt-functions</name>
+   <description>Typed Kotlin functions for calling HTTP APIs on the JDK's own HttpClient, with Jackson for JSON.</description>
    <packaging>jar</packaging>
 
    <dependencies>

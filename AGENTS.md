@@ -226,6 +226,19 @@ status rather than implementation details. Keep tests local and deterministic;
 never call a real HTTP service as part of the normal suite. Use dummy credentials
 and do not log real authorization values.
 
+## Releases
+
+The library is licensed under Apache 2.0 (`LICENSE`). Versions follow semantic versioning: since
+1.0.0 a breaking change to the public API of either module needs a new major version. A release
+is the tag `v<version>` on `master`; `master` itself carries the next `-SNAPSHOT` version.
+
+The `release` profile in the root POM adds what Maven Central requires: a sources jar, a javadoc
+jar (it only holds the README and the licence; the API documentation is the KDoc in the sources),
+GPG signatures and `central-publishing-maven-plugin`. `mvn -Prelease -Dgpg.skip verify` builds
+everything except the signatures and is the way to check the profile without credentials.
+`mvn -Prelease deploy` uploads, and needs the owner's GPG key and a Central Portal token under
+the server id `central` in `~/.m2/settings.xml`. Never create, store or print those.
+
 ## CI and configuration caveats
 
 `.github/workflows/maven-test.yml` runs `mvn -B -ntp clean test` on Java 11 and 21 for pushes to

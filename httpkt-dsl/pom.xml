@@ -5,10 +5,12 @@
     <parent>
         <groupId>io.github.httpkt</groupId>
         <artifactId>httpkt-parent</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>1.0.0</version>
     </parent>
 
     <artifactId>httpkt-dsl</artifactId>
+    <name>httpkt-dsl</name>
+    <description>A Kotlin DSL for calling HTTP APIs on the JDK's own HttpClient, with Jackson for JSON.</description>
 
     <dependencies>
         <dependency>
