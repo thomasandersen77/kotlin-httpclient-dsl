@@ -295,14 +295,24 @@ internal fun <B> RequestConfig.send(
 ): HttpResponse<B> {
     fun attempt(): Pair<HttpRequest, HttpResponse<B>> {
         val request = buildRequest(method, body, path, queryParams, headers, contentType, pathParams, accept)
-        return request to httpClient.send(request, bodyHandler)
+        val started = startTimer()
+        val response = try {
+            httpClient.send(request, bodyHandler)
+        } catch (e: Exception) {
+            logFailure(request, e, started)
+            throw e
+        }
+        logResponse(request, response.statusCode(), started)
+        return request to response
     }
 
     val (request, response) = attempt()
     val auth = authorization?.takeUnless { hasAuthorizationHeader(headers) } ?: return response
     if (response.statusCode() != 401) return response
     val rejected = request.headers().firstValue("Authorization").orElse(null) ?: return response
-    return if (auth.onUnauthorized(rejected)) attempt().second else response
+    if (!auth.onUnauthorized(rejected)) return response
+    logResend(request)
+    return attempt().second
 }
 
 @PublishedApi

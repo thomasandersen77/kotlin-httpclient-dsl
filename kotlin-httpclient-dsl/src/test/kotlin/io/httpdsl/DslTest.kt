@@ -723,6 +723,56 @@ class DslTest {
         assertEquals(first.hashCode(), first.hashCode())
     }
 
+    @Test
+    internal fun `debug logging shows method, url, status, resends and failures, and no secrets`() {
+        wiremock.stubFor(get(urlEqualTo("/logged?api_key=s3cret-key")).willReturn(aResponse().withStatus(200)))
+        wiremock.stubFor(get(urlEqualTo("/logged-expiring")).withHeader("Authorization", equalTo("Bearer s3cret-1"))
+            .willReturn(aResponse().withStatus(401)))
+        wiremock.stubFor(get(urlEqualTo("/logged-expiring")).withHeader("Authorization", equalTo("Bearer s3cret-2"))
+            .willReturn(aResponse().withStatus(200)))
+        wiremock.stubFor(get(urlEqualTo("/logged-slow")).willReturn(aResponse().withStatus(200).withFixedDelay(1_000)))
+        val base = "http://localhost:${wiremock.port()}"
+        var fetches = 0
+        val http = HttpClientDsl(base, authorization = Authorization.cachedBearer { "s3cret-${++fetches}" })
+
+        assertTrue(!System.getLogger("io.httpdsl").isLoggable(System.Logger.Level.DEBUG), "silent until DEBUG is switched on")
+        val lines = debugLinesOf("io.httpdsl") {
+            http.get("/logged") { withoutAuthorization(); queryParam("api_key", "s3cret-key") }
+            http.get("/logged-expiring")
+            assertFailsWith<HttpTimeoutException> { http.get("/logged-slow") { requestTimeout = ofMillis(100) } }
+        }
+
+        assertEquals(5, lines.size, lines.toString())
+        assertTrue(Regex("GET \\Q$base/logged\\E -> 200 in \\d+ ms").matches(lines[0]), lines[0])
+        assertTrue(Regex("GET \\Q$base/logged-expiring\\E -> 401 in \\d+ ms").matches(lines[1]), lines[1])
+        assertEquals("GET $base/logged-expiring -> 401, sending again with a new Authorization", lines[2])
+        assertTrue(Regex("GET \\Q$base/logged-expiring\\E -> 200 in \\d+ ms").matches(lines[3]), lines[3])
+        assertTrue(Regex("GET \\Q$base/logged-slow\\E failed after \\d+ ms: HttpTimeoutException").matches(lines[4]), lines[4])
+        assertTrue(lines.none { "s3cret" in it }, lines.toString())
+    }
+
+    /** Runs [block] with DEBUG switched on for [loggerName] and returns the lines it logged. */
+    private fun debugLinesOf(loggerName: String, block: () -> Unit): List<String> {
+        val lines = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val handler = object : java.util.logging.Handler() {
+            override fun publish(record: java.util.logging.LogRecord) { lines += record.message }
+            override fun flush() = Unit
+            override fun close() = Unit
+        }
+        // System.Logger ends up in java.util.logging when no other backend is installed.
+        val backend = java.util.logging.Logger.getLogger(loggerName)
+        val previousLevel = backend.level
+        backend.level = java.util.logging.Level.FINE
+        backend.addHandler(handler)
+        try {
+            block()
+        } finally {
+            backend.removeHandler(handler)
+            backend.level = previousLevel
+        }
+        return lines.toList()
+    }
+
     private data class LineDto(val productId: String, val unitPrice: Int)
 
     @Test

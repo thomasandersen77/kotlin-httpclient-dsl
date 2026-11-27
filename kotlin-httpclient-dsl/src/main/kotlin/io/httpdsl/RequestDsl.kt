@@ -135,11 +135,21 @@ class RequestDsl internal constructor(
         val rejected = firstRequest.headers().firstValue("Authorization").orElse(null) ?: return response
         if (!auth.onUnauthorized(rejected)) return response
 
+        logResend(firstRequest)
         return send(buildRequest(targetUri))
     }
 
-    private fun send(request: HttpRequest): HttpResponse<String> =
-        MappedHttpResponse(httpClient.send(request, BodyHandlers.ofString()), objectMapper)
+    private fun send(request: HttpRequest): HttpResponse<String> {
+        val started = startTimer()
+        val response = try {
+            httpClient.send(request, BodyHandlers.ofString())
+        } catch (e: Exception) {
+            logFailure(request, e, started)
+            throw e
+        }
+        logResponse(request, response.statusCode(), started)
+        return MappedHttpResponse(response, objectMapper)
+    }
 
     private fun appendQueryParams(uri: URI): URI {
         if (queryParams.isEmpty()) return uri

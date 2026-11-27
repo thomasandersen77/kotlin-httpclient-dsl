@@ -150,13 +150,6 @@ class HttpStatusException @PublishedApi internal constructor(
 private fun statusMessage(status: Int, method: String?, uri: URI?): String =
     if (method == null || uri == null) "HTTP status $status" else "HTTP status $status for $method ${uri.withoutSecrets()}"
 
-private fun URI.withoutSecrets(): String = buildString {
-    if (scheme != null) append(scheme).append("://")
-    if (host != null) append(host)
-    if (port != -1) append(':').append(port)
-    append(rawPath.orEmpty())
-}
-
 /**
  * What [HttpClientDsl] returns: the JDK response, plus the client's `ObjectMapper` so that
  * [bodyAs] deserializes with the same configuration that serialized the request.

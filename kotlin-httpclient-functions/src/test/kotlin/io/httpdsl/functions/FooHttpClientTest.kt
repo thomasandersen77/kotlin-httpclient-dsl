@@ -10,6 +10,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.net.http.HttpClient
+import java.net.http.HttpTimeoutException
+import java.time.Duration
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDate
@@ -595,6 +597,58 @@ internal class FooHttpClientTest {
 
         assertEquals(401, error.status)
         wiremock.verify(1, getRequestedFor(urlEqualTo("/api/rejected")))
+    }
+
+    @Test
+    internal fun `debug logging shows method, url, status, resends and failures, and no secrets`() {
+        wiremock.stubFor(get(urlEqualTo("/api/logged?api_key=s3cret-key")).willReturn(aResponse().withStatus(204)))
+        wiremock.stubFor(get(urlEqualTo("/api/logged-expiring")).withHeader("Authorization", equalTo("Bearer s3cret-1"))
+            .willReturn(aResponse().withStatus(401)))
+        wiremock.stubFor(get(urlEqualTo("/api/logged-expiring")).withHeader("Authorization", equalTo("Bearer s3cret-2"))
+            .willReturn(aResponse().withStatus(204)))
+        wiremock.stubFor(get(urlEqualTo("/api/logged-slow")).willReturn(aResponse().withStatus(204).withFixedDelay(1_000)))
+        val base = "http://localhost:${wiremock.port()}"
+        val fetches = AtomicInteger(0)
+        val config = RequestConfig(url = base, authorization = Authorization.cachedBearer { "s3cret-${fetches.incrementAndGet()}" })
+
+        assertFalse(System.getLogger("io.httpdsl.functions").isLoggable(System.Logger.Level.DEBUG), "silent until DEBUG is switched on")
+        val lines = debugLinesOf("io.httpdsl.functions") {
+            RequestConfig(url = base).get<Unit>("/api/logged", queryParams = mapOf("api_key" to "s3cret-key"))
+            config.get<Unit>("/api/logged-expiring")
+            assertThrows(HttpTimeoutException::class.java) {
+                config.copy(requestTimeout = Duration.ofMillis(100)).get<Unit>("/api/logged-slow")
+            }
+        }
+
+        assertEquals(5, lines.size, lines.toString())
+        assertTrue(Regex("GET \\Q$base/api/logged\\E -> 204 in \\d+ ms").matches(lines[0]), lines[0])
+        assertTrue(Regex("GET \\Q$base/api/logged-expiring\\E -> 401 in \\d+ ms").matches(lines[1]), lines[1])
+        assertEquals("GET $base/api/logged-expiring -> 401, sending again with a new Authorization", lines[2])
+        assertTrue(Regex("GET \\Q$base/api/logged-expiring\\E -> 204 in \\d+ ms").matches(lines[3]), lines[3])
+        assertTrue(Regex("GET \\Q$base/api/logged-slow\\E failed after \\d+ ms: HttpTimeoutException").matches(lines[4]), lines[4])
+        assertTrue(lines.none { "s3cret" in it }, lines.toString())
+    }
+
+    /** Runs [block] with DEBUG switched on for [loggerName] and returns the lines it logged. */
+    private fun debugLinesOf(loggerName: String, block: () -> Unit): List<String> {
+        val lines = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val handler = object : java.util.logging.Handler() {
+            override fun publish(record: java.util.logging.LogRecord) { lines += record.message }
+            override fun flush() = Unit
+            override fun close() = Unit
+        }
+        // System.Logger ends up in java.util.logging when no other backend is installed.
+        val backend = java.util.logging.Logger.getLogger(loggerName)
+        val previousLevel = backend.level
+        backend.level = java.util.logging.Level.FINE
+        backend.addHandler(handler)
+        try {
+            block()
+        } finally {
+            backend.removeHandler(handler)
+            backend.level = previousLevel
+        }
+        return lines.toList()
     }
 
     @BeforeEach

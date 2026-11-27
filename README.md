@@ -7,7 +7,8 @@ The aim is that an outgoing call reads like what it does, and that adding the li
 
 - **One dependency to add.** Pick one of the two modules below. They do not depend on each other.
 - **Jackson is the only thing it brings along**, besides the Kotlin standard library. There is no
-  third-party HTTP client, no logging framework, no annotation processing and no framework integration.
+  third-party HTTP client, no logging framework (debug logging goes through the JDK's `System.Logger`),
+  no annotation processing and no framework integration.
 - **It keeps to itself.** No service loading, no logging binding, no framework hooks, and no shared
   configuration you can change by accident: each client or config carries its own settings,
   its own `ObjectMapper` included.
@@ -166,6 +167,40 @@ class FooHttpClient(private val config: RequestConfig) {
 
 - **Raw text, binary, and multipart uploads:** Pass `contentType = "text/plain"` or `"application/x-www-form-urlencoded"` for raw `String` bodies, `ByteArray` for binary payloads/downloads (`config.get<ByteArray>(...)` / `config.downloadFile(path, destination)`), or `multipart { field(...); file(...) }` for `multipart/form-data`.
 - **Error handling:** Responses outside `200..299` throw `HttpException` (`HttpClientException` for `4xx`, `HttpServerException` for `5xx`), retaining `status` and `body`.
+
+---
+
+## Debug logging
+
+Both modules log each call at `DEBUG` through the JDK's own `System.Logger`, so there is still no
+logging dependency. Nothing is logged until you switch the level on.
+
+```text
+POST https://api.example.com/orders -> 201 in 48 ms
+GET https://api.example.com/orders/42 -> 401 in 12 ms
+GET https://api.example.com/orders/42 -> 401, sending again with a new Authorization
+GET https://api.example.com/orders/42 -> 200 in 31 ms
+GET https://api.example.com/slow failed after 5003 ms: HttpTimeoutException
+```
+
+A line has the method, the URL and the outcome, and timeouts and connection errors get a line too.
+It never contains the query string, user info, headers or bodies.
+
+The logger names are `io.httpdsl` (DSL) and `io.httpdsl.functions` (functions); the second is a
+child of the first, so `io.httpdsl` covers both. Where the lines end up depends on your application:
+
+| Your logging | What to do |
+| --- | --- |
+| SLF4J 2 with Logback | Add `org.slf4j:slf4j-jdk-platform-logging` to your application, then set `io.httpdsl` to `DEBUG` as usual |
+| Log4j 2 | Add `org.apache.logging.log4j:log4j-jpl`, then set `io.httpdsl` to `DEBUG` |
+| Spring Boot | Boot routes `java.util.logging` to its own logging, so `logging.level.io.httpdsl=DEBUG` should be enough (not verified in this repository) |
+| Nothing | It goes to `java.util.logging`: set the level of `io.httpdsl` to `FINE` |
+
+Without one of the bridges, a `<logger name="io.httpdsl" level="DEBUG"/>` in `logback.xml` shows nothing,
+because the lines go to `java.util.logging` instead.
+
+For what happens below the library, the JDK's `HttpClient` has its own switch, which needs no code:
+`-Djdk.httpclient.HttpClient.log=requests,errors`.
 
 ---
 

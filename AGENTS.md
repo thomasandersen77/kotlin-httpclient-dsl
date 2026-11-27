@@ -149,6 +149,21 @@ Each module is meant to be used as one dependency. They must stay independent of
 - The public functions are `inline`: after changing a signature in `HttpFunctions.kt`, run
   `mvn clean test`, otherwise stale test classes fail with `NoSuchMethodError`.
 
+### Logging (both modules)
+
+Each module has an internal `Logging.kt` with the same content apart from the package and the
+logger name (`io.httpdsl`, `io.httpdsl.functions`). It uses `System.Logger`, never SLF4J or any
+other logging dependency, and logs only at `DEBUG` with lazy `Supplier` messages:
+
+- one line per response: `<METHOD> <url> -> <status> in <n> ms`
+- one line per transport failure: `<METHOD> <url> failed after <n> ms: <ExceptionSimpleName>`
+- one line before a resend after 401
+
+The URL is always `withoutSecrets()` (scheme, host, port, path). Never log the query string, user
+info, header values or bodies. The calls sit in the non-inline send path (`RequestDsl.send`,
+`RequestConfig.send`), not in the inline public functions. Tests capture the output by attaching a
+`java.util.logging.Handler`, which is where `System.Logger` ends up on the test classpath.
+
 Keep the two client approaches distinct unless consolidation is explicitly in scope.
 
 ## Build and tests
@@ -170,7 +185,7 @@ mvn clean verify
 
 The tests are JUnit Jupiter tests executed by Surefire. Both HTTP modules start
 WireMock on dynamic local ports; they require no external API credentials or Docker.
-`DslTest` has 42 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 27,
+`DslTest` has 43 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 28,
 `FunctionsUsageExamplesTest` has 10, and `RequestConfigTest` has 12. The two `*UsageExamplesTest`
 classes are the runnable source of the README's usage examples.
 There is no separate Failsafe integration-test setup.
