@@ -27,10 +27,10 @@ The root Maven reactor contains **two** modules:
 | `httpkt-dsl` | Receiver-lambda DSL for requests, headers and JSON/raw bodies | `io.github.httpkt.dsl` |
 | `httpkt-functions` | Function-based HTTP helpers on `RequestConfig` | `io.github.httpkt.functions` |
 
-The library is called httpkt (the Git repository may still carry its old name,
-`kotlin-httpclient-dsl`). The root project is `httpkt-parent` and the `groupId` is
-`io.github.httpkt`, which can only be published to Maven Central by whoever holds the GitHub
-organization `httpkt`. Each module is meant to be used as one dependency. They must stay
+The library is called httpkt and lives at `github.com/httpkt/httpkt` (a local checkout may
+still sit in a folder named `kotlin-httpclient-dsl`). The root project is `httpkt-parent` and the
+`groupId` is `io.github.httpkt`, which the owner can publish under on Maven Central because he
+holds the GitHub organization `httpkt`. Each module is meant to be used as one dependency. They must stay
 independent of each other.
 
 ## Request paths through the code
