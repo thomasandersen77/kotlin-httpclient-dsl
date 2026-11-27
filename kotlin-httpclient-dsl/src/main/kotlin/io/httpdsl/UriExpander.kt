@@ -2,31 +2,37 @@ package io.httpdsl
 
 import java.net.URI
 import java.net.URISyntaxException
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
-object UriExpander {
+internal object UriExpander {
+
+    private val placeholderRegex = Regex("\\{([^{}/]+)\\}")
 
     fun expand(uriTemplate: String, vararg uriVariables: Any): URI {
-        require( !(uriTemplate.contains("{") && uriTemplate.contains("}") && uriVariables.isEmpty()) ) {
-            "Missing uriVariables"
+        val matches = placeholderRegex.findAll(uriTemplate).toList()
+        require(matches.size == uriVariables.size) {
+            "Expected ${matches.size} uriVariables for template '$uriTemplate', but got ${uriVariables.size}"
         }
+
+        var index = 0
+        val expanded = placeholderRegex.replace(uriTemplate) {
+            encodeValue(uriVariables[index++].toString())
+        }
+
+        require(!expanded.contains("{") && !expanded.contains("}")) {
+            "Invalid URI template '$uriTemplate'"
+        }
+
         return try {
-            if (!uriTemplate.contains("{") || uriVariables.isEmpty()) {
-                URI(uriTemplate)
-            } else {
-                var url = ""
-                uriVariables.forEach {
-                    url = replaceWithValue(uriTemplate, it)
-                }
-                URI(url)
-            }
+            URI(expanded)
         } catch (e: URISyntaxException) {
             throw IllegalArgumentException(e)
         }
     }
 
-    private fun replaceWithValue(urlTemplate: String, uriVariable: Any): String {
-        val stop = urlTemplate.indexOf('}')
-        val start = urlTemplate.indexOf('{')
-        return urlTemplate.replace(urlTemplate.substring(start, stop + 1), uriVariable.toString())
-    }
+    internal fun encode(value: String): String =
+        URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+
+    private fun encodeValue(value: String): String = encode(value)
 }
