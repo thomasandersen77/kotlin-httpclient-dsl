@@ -71,10 +71,20 @@ data class RequestConfig(
     val httpClient: HttpClient = defaultHttpClient,
     val objectMapper: ObjectMapper = defaultObjectMapper(),
 ) {
-    /** Header values and credentials are left out, so the config is safe to log. */
+    /** Header values, credentials and the url's user info and query are left out, so the config is safe to log. */
     override fun toString(): String =
-        "RequestConfig(url=$url, authorization=${if (authorization == null) "none" else "set"}, " +
+        "RequestConfig(url=${urlWithoutSecrets()}, authorization=${if (authorization == null) "none" else "set"}, " +
             "headers=${headers.keys}, requestTimeout=$requestTimeout)"
+
+    private fun urlWithoutSecrets(): String = runCatching {
+        val uri = URI.create(url)
+        buildString {
+            if (uri.scheme != null) append(uri.scheme).append("://")
+            if (uri.host != null) append(uri.host)
+            if (uri.port != -1) append(':').append(uri.port)
+            append(uri.rawPath.orEmpty())
+        }
+    }.getOrDefault("<invalid url>")
 
     internal fun resolveUri(path: String, queryParams: Map<String, Any?> = emptyMap()): URI {
         val baseUri = URI.create(url)

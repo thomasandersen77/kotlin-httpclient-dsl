@@ -37,6 +37,19 @@ class RequestConfigTest {
     }
 
     @Test
+    fun `cachedBearer reports a token fetch that would authorize itself`() {
+        lateinit var auth: Authorization
+        auth = Authorization.cachedBearer { auth.headerValue() }
+
+        val error = assertThrows(IllegalStateException::class.java) { auth.headerValue() }
+
+        assertEquals(
+            "Recursive authorization detected while fetching token. Fetch it with a RequestConfig without authorization.",
+            error.message,
+        )
+    }
+
+    @Test
     fun `the config authorization sets the header, and an explicit Authorization header takes its place`() {
         var calls = 0
         val config = RequestConfig(url = "http://localhost", authorization = { calls++; "Bearer from-config" })
@@ -69,6 +82,10 @@ class RequestConfigTest {
         val withHeaders = RequestConfig(url = "http://localhost", headers = mapOf("X-Api-Key" to "s3cret-key")).toString()
         assertFalse(withHeaders.contains("s3cret"), withHeaders)
         assertTrue(withHeaders.contains("headers=[X-Api-Key]"), withHeaders)
+
+        val withUrlSecrets = RequestConfig(url = "https://user:s3cret-pw@api.example.com:8443/v1?api_key=s3cret-key").toString()
+        assertFalse(withUrlSecrets.contains("s3cret"), withUrlSecrets)
+        assertTrue(withUrlSecrets.contains("url=https://api.example.com:8443/v1,"), withUrlSecrets)
     }
 
     @Test
@@ -96,6 +113,17 @@ class RequestConfigTest {
         assertEquals(listOf("application/json"), plain.contentTypeOf("{}"))
         assertEquals(listOf("text/plain"), plain.contentTypeOf("hi", "text/plain"))
         assertEquals(listOf("application/vnd.api+json"), config.contentTypeOf(mapOf("a" to 1)))
+        // A contentType given for one call is more specific than a header set for all calls ...
+        assertEquals(listOf("text/plain"), config.contentTypeOf("hello", "text/plain"))
+        assertEquals(listOf("application/pdf"), config.contentTypeOf(byteArrayOf(1), "application/pdf"))
+        // ... and that call's own headers are the most specific of all.
+        assertEquals(
+            listOf("text/csv"),
+            config.buildRequest(
+                method = Method.POST, body = "a;b", path = "/x", contentType = "text/plain",
+                headers = mapOf("content-type" to "text/csv"),
+            ).headers().allValues("Content-Type"),
+        )
 
         val upload = multipart { field("a", "b") }
         assertEquals(listOf(upload.contentTypeHeader), config.contentTypeOf(upload))
@@ -107,6 +135,10 @@ class RequestConfigTest {
         assertThrows(IllegalArgumentException::class.java) { multipart { file("doc", "a.pdf", byteArrayOf(1), "application/pdf\nX-Evil: 1") } }
         assertThrows(IllegalArgumentException::class.java) { multipart { field("na\nme", "value") } }
         assertThrows(IllegalArgumentException::class.java) { MultipartBody(boundary = "b\r\n") }
+        assertThrows(IllegalArgumentException::class.java) { MultipartBody(boundary = "") }
+        assertThrows(IllegalArgumentException::class.java) { MultipartBody(boundary = "a; b") }
+        assertThrows(IllegalArgumentException::class.java) { MultipartBody(boundary = "x".repeat(71)) }
+        MultipartBody(boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW")
         assertThrows(IllegalArgumentException::class.java) { multipart { file("doc", java.nio.file.Path.of("/")) } }
         multipart { field("note", "line one\nline two") } // a field value is a body, not a header
     }
@@ -124,6 +156,12 @@ class RequestConfigTest {
         )
 
         assertEquals("http://localhost/ping", RequestConfig(url = "http://localhost").resolveUri("/ping").toString())
+
+        // A query string on the url is sent with every request, before the request's own.
+        assertEquals(
+            "https://api.example.com/v1/orders?api-version=2&page=1",
+            RequestConfig(url = "https://api.example.com/v1?api-version=2").resolveUri("/orders", mapOf("page" to 1)).toString(),
+        )
 
         // An empty path leaves the base path alone, trailing slash included.
         assertEquals("https://api.example.com/v1/", RequestConfig(url = "https://api.example.com/v1/").resolveUri("").toString())

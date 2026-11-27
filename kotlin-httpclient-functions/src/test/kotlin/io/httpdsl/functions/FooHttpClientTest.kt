@@ -472,7 +472,8 @@ internal class FooHttpClientTest {
     internal fun `downloadFile fetches a new token after a 401 and downloads the file`(@TempDir tempDir: Path) {
         wiremock.stubFor(get(urlEqualTo("/api/report.csv"))
             .withHeader("Authorization", equalTo("Bearer token-1"))
-            .willReturn(aResponse().withStatus(401).withBody("expired")))
+            // Longer than the file: the retry must not leave the tail of this body behind it.
+            .willReturn(aResponse().withStatus(401).withBody("{\"error\":\"invalid_token\",\"error_description\":\"Token expired\"}")))
         wiremock.stubFor(get(urlEqualTo("/api/report.csv"))
             .withHeader("Authorization", equalTo("Bearer token-2"))
             .willReturn(aResponse().withStatus(200).withBody("id;name")))
@@ -519,8 +520,47 @@ internal class FooHttpClientTest {
 
         assertNull(config.getOrNull<ByteArray>("/api/no-avatar"))
         assertArrayEquals(ByteArray(0), config.get<ByteArray>("/api/no-avatar"))
+        // An empty 200 is a real, empty file, not "nothing there".
+        assertArrayEquals(ByteArray(0), config.getOrNull<ByteArray>("/api/empty-text"))
         assertEquals("", config.get<String>("/api/empty-text"))
         assertNull(config.get<String?>("/api/empty-text"))
+    }
+
+    @Test
+    internal fun `an Authorization header replaces the config authorization, which is then not told about a 401`() {
+        wiremock.stubFor(get(urlEqualTo("/api/explicit-auth")).willReturn(aResponse().withStatus(401)))
+        var asked = 0
+        var told = 0
+        val config = RequestConfig(
+            url = "http://localhost:${wiremock.port()}",
+            authorization = object : Authorization {
+                override fun headerValue(): String { asked++; return "Bearer from-config" }
+                override fun onUnauthorized(rejectedHeaderValue: String): Boolean { told++; return true }
+            },
+        )
+
+        assertThrows(HttpClientException::class.java) {
+            config.get<Foo>("/api/explicit-auth", headers = mapOf("Authorization" to "Basic explicit"))
+        }
+
+        assertEquals(0, asked)
+        assertEquals(0, told)
+        wiremock.verify(1, getRequestedFor(urlEqualTo("/api/explicit-auth")).withHeader("Authorization", equalTo("Basic explicit")))
+    }
+
+    @Test
+    internal fun `bearer with a lambda sends a fresh token per request and does not resend after a 401`() {
+        wiremock.stubFor(get(urlEqualTo("/api/rejected-dynamic")).willReturn(aResponse().withStatus(401)))
+        val issued = AtomicInteger(0)
+        val config = RequestConfig(
+            url = "http://localhost:${wiremock.port()}",
+            authorization = Authorization.bearer { "token-${issued.incrementAndGet()}" },
+        )
+
+        assertThrows(HttpClientException::class.java) { config.get<Foo>("/api/rejected-dynamic") }
+
+        assertEquals(1, issued.get())
+        wiremock.verify(1, getRequestedFor(urlEqualTo("/api/rejected-dynamic")))
     }
 
     @Test

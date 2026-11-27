@@ -63,12 +63,12 @@ Each module is meant to be used as one dependency. They must stay independent of
   request fails before sending. `onUnauthorized(rejectedHeaderValue)` defaults to `false`; returning `true`
   makes `exchange` resend the request exactly once after a 401. `CachedAuthorization`
   caches until a 401 and guards against recursive token fetches. `Authorization.Companion`
-  provides `basic(username, password)`, `bearer(token)` and `cachedBearer(fetchToken)`.
+  provides `basic(username, password)`, `bearer(token)`, `bearer(tokenProvider)` and `cachedBearer(fetchToken)`.
   Set on `HttpClientDsl`, replaced with `RequestDsl.authorization` / `basicAuth` / `bearerToken`,
   dropped with `RequestDsl.withoutAuthorization`.
 - `HttpClientDsl` has two constructors: `(baseUrl, connectTimeout = 30s, authorization = null, ...)`
   which builds the shared `HttpClient`, and `(baseUrl, httpClient, authorization = null, ...)` which
-  uses a caller-supplied `HttpClient`. Both end with `objectMapper = dslObjectMapper`,
+  uses a caller-supplied `HttpClient`. Both end with `objectMapper = defaultObjectMapper()`,
   `defaultHeaders = emptyMap()` and `requestTimeout = 30s`. Every request uses the client's
   shared `HttpClient`.
 - Connection and request timeouts default to 30 seconds. `RequestDsl.requestTimeout` starts as
@@ -77,11 +77,12 @@ Each module is meant to be used as one dependency. They must stay independent of
   JSON with the `bodyAs<T>()` extension. The object actually returned is the internal
   `MappedHttpResponse`, which delegates to the JDK response and carries the client's
   `ObjectMapper`; `bodyAs` falls back to `dslObjectMapper` for any other `HttpResponse<String>`.
-  It delegates `toString`, `equals` and `hashCode` explicitly.
+  It delegates `toString` and `hashCode`, and equals only another wrapper of the same response.
 - `HttpClientDsl.objectMapper` defaults to `defaultObjectMapper()`, a fresh copy per client. The
   shared `dslObjectMapper` must never be reachable through a public property.
 - `baseUrl` is parsed once; `joinUrl` joins it with the expanded path structurally (paths with one
-  slash, queries combined, the path's fragment first). It must include scheme and host.
+  slash, queries combined, the path's fragment first). It must include scheme and host, and
+  the path must not have a scheme or authority.
 - `defaultHeaders` is copied in the constructor.
 - `HttpStatusException` has `status`, `body`, `method` and `uri`. Its message is
   `HTTP status <n> for <METHOD> <scheme://host[:port]/path>` when thrown by `bodyAs` and
@@ -107,7 +108,7 @@ Each module is meant to be used as one dependency. They must stay independent of
 - `RequestConfig(url, authorization, headers, requestTimeout, httpClient, objectMapper)`. The port
   is part of `url`. `defaultHttpClient` (shared) and `mapper` are `internal`; `objectMapper`
   defaults to `defaultObjectMapper()`, a fresh copy per config. `toString()` prints header names
-  only and never the authorization.
+  only, never the authorization, and the url without user info and query.
 - `resolveUri` rejects a `path` with a scheme or authority and leaves the base path untouched
   for an empty path.
 - `Authorization` (`Authorization.kt`) is this module's own `fun interface`, deliberately
@@ -123,12 +124,17 @@ Each module is meant to be used as one dependency. They must stay independent of
 - A `queryParams` value that is an `Iterable` or an array gives one parameter per non-null element.
 - `exchange<T>(method, path, ...)` returns `HttpResult(status, headers, body)`; `Method` is public.
 - `Accept` is `application/json`, or `*/*` for `ByteArray` results and `downloadFile`.
-  `Content-Type` is set only when the request has a body: `contentType` if given, otherwise
-  `application/octet-stream` for a `ByteArray` and `application/json` for the rest. A
-  `MultipartBody` always supplies its own, set last so no header can replace the boundary.
-- `downloadFile` writes to a temp file beside the destination and moves it into place only after
-  a 2xx; the temp file is always removed.
-- `MultipartBody` rejects CR/LF in the boundary, names, filenames and content types.
+  `Content-Type` is set only when the request has a body. Precedence, weakest first: the
+  body's default (`application/octet-stream` for a `ByteArray`, `application/json` otherwise),
+  the config's `headers`, the call's `contentType`, the call's `headers`. A `MultipartBody`
+  always supplies its own, set last so nothing can replace the boundary.
+- `downloadFile` writes to a `.part` file beside the destination, opened with
+  `TRUNCATE_EXISTING` because a 401 resend reuses it, and moves it into place only after a 2xx;
+  the `.part` file is always removed.
+- `MultipartBody` rejects CR/LF in names, filenames and content types, and requires an
+  RFC 2046 boundary (1-70 characters, no spaces).
+- For `ByteArray` results only a 204 is "no content" (`getOrNull` gives `null`); an empty 200
+  is an empty array.
 - `httpGet/httpGetOrNull/httpPost/httpPut/httpPatch/httpDelete` are `@Deprecated` wrappers around
   the extensions; `FooHttpClientTest` still covers them under `@Suppress("DEPRECATION")`.
 - Statuses `200..299` succeed; `400..499` throw `HttpClientException`; `500..599` throw
@@ -162,8 +168,8 @@ mvn clean verify
 
 The tests are JUnit Jupiter tests executed by Surefire. Both HTTP modules start
 WireMock on dynamic local ports; they require no external API credentials or Docker.
-`DslTest` has 40 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 25,
-`FunctionsUsageExamplesTest` has 10, and `RequestConfigTest` has 11. The two `*UsageExamplesTest`
+`DslTest` has 42 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 27,
+`FunctionsUsageExamplesTest` has 10, and `RequestConfigTest` has 12. The two `*UsageExamplesTest`
 classes are the runnable source of the README's usage examples.
 There is no separate Failsafe integration-test setup.
 
@@ -201,7 +207,7 @@ and do not log real authorization values.
 
 `.github/workflows/maven-test.yml` runs `mvn -B -ntp clean test` on Java 11 and 21 for pushes to
 `master`, `main` and `releases/*` and for pull requests. Local runs are usually on a newer JDK,
-so that workflow is what verifies Java 11: avoid JDK 12+ APIs in tests as well as in main code
-(`Stream.toList()` is a typical slip). The Qodana workflow only triggers on `main` and
+and the Kotlin compiler runs with `-Xjdk-release=11`, so a JDK 12+ API (`Stream.toList()` is a
+typical slip) fails to compile in main and test code alike; the workflow then verifies the run. The Qodana workflow only triggers on `main` and
 `releases/*`. `.github/dependabot.yml` covers Maven and GitHub Actions weekly. Keep CI repairs separate from
 unrelated library work and verify them before claiming automation works.

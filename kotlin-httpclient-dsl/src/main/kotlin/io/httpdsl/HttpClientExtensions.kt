@@ -94,6 +94,7 @@ class HttpClientDsl(
  * path inside the base URL's query or fragment.
  */
 private fun joinUrl(base: URI, path: URI): URI {
+    require(path.scheme == null && path.rawAuthority == null) { "path must be relative to baseUrl, got '$path'" }
     val basePath = base.rawPath.orEmpty()
     val subPath = path.rawPath.orEmpty()
     val joinedPath = when {
@@ -155,8 +156,10 @@ internal class MappedHttpResponse(
     val objectMapper: ObjectMapper,
 ) : HttpResponse<String> by delegate {
     // Interface delegation does not cover these three, and the JDK's toString is the useful one.
+    // Equal only to another wrapper of the same response: claiming equality with the raw JDK
+    // response could not be symmetric.
     override fun toString(): String = delegate.toString()
-    override fun equals(other: Any?): Boolean = delegate == ((other as? MappedHttpResponse)?.delegate ?: other)
+    override fun equals(other: Any?): Boolean = other is MappedHttpResponse && delegate == other.delegate
     override fun hashCode(): Int = delegate.hashCode()
 }
 

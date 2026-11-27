@@ -25,7 +25,11 @@ class MultipartBody(
     private val parts = mutableListOf<Part>()
 
     init {
-        requireSingleLine("boundary", boundary)
+        // RFC 2046: 1 to 70 characters from a fixed set. Spaces are left out here, because the
+        // boundary goes unquoted into the Content-Type header.
+        require(boundaryPattern.matches(boundary)) {
+            "Multipart boundary must be 1-70 characters of A-Z a-z 0-9 ' ( ) + _ , - . / : = ?"
+        }
     }
 
     fun field(name: String, value: String): MultipartBody {
@@ -100,6 +104,8 @@ class MultipartBody(
     private fun escapeQuoted(value: String): String =
         value.replace("\\", "\\\\").replace("\"", "\\\"")
 }
+
+private val boundaryPattern = Regex("[A-Za-z0-9'()+_,./:=?-]{1,70}")
 
 fun multipart(block: MultipartBody.() -> Unit): MultipartBody =
     MultipartBody().apply(block)

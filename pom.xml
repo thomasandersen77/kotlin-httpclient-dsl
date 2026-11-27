@@ -124,6 +124,9 @@
             </executions>
             <configuration>
                <jvmTarget>${java.version}</jvmTarget>
+               <args>
+                  <arg>-Xjdk-release=${java.version}</arg>
+               </args>
             </configuration>
          </plugin>
       </plugins>

@@ -602,6 +602,9 @@ class DslTest {
 
         val error = assertFailsWith<IllegalArgumentException> { HttpClientDsl("/relative") }
         assertEquals("baseUrl must include scheme and host, got '/relative'", error.message)
+
+        val absolute = assertFailsWith<IllegalArgumentException> { http.get("https://other.example.com/v1/orders") }
+        assertEquals("path must be relative to baseUrl, got 'https://other.example.com/v1/orders'", absolute.message)
     }
 
     @Test
@@ -679,6 +682,39 @@ class DslTest {
         assertEquals("(GET http://localhost:${wiremock.port()}/per-request-token) 200", response.toString())
         wiremock.verify(1, getRequestedFor(urlEqualTo("/per-request-token")).withHeader("Authorization", equalTo("Bearer token-1")))
         wiremock.verify(1, getRequestedFor(urlEqualTo("/per-request-token")).withHeader("Authorization", equalTo("Bearer token-2")))
+    }
+
+    @Test
+    internal fun `cached authorization keeps a newer token when a 401 arrives for an older one`() {
+        var fetches = 0
+        val auth = CachedAuthorization { "Bearer token-${++fetches}" }
+        assertEquals("Bearer token-1", auth.headerValue())
+
+        // Two requests were sent with token-1 and both are rejected. Whichever order the two
+        // rejections and the next fetch come in, token-1 is replaced exactly once.
+        assertTrue(auth.onUnauthorized("Bearer token-1"))
+        assertTrue(auth.onUnauthorized("Bearer token-1"))
+        assertEquals("Bearer token-2", auth.headerValue())
+        assertTrue(auth.onUnauthorized("Bearer token-1"))
+        assertEquals("Bearer token-2", auth.headerValue())
+        assertEquals(2, fetches)
+
+        // A rejection of the current token does replace it.
+        assertTrue(auth.onUnauthorized("Bearer token-2"))
+        assertEquals("Bearer token-3", auth.headerValue())
+    }
+
+    @Test
+    internal fun `HttpStatusException message leaves out user info and query, and a response equals only itself wrapped`() {
+        val error = HttpStatusException(500, "boom", "GET", java.net.URI("https://user:s3cret@api.example.com:8443/v1/orders?api_key=s3cret#top"))
+        assertEquals("HTTP status 500 for GET https://api.example.com:8443/v1/orders", error.message)
+
+        val http = HttpClientDsl("http://localhost:${wiremock.port()}")
+        val first = http.get("/admin/ping")
+        val second = http.get("/admin/ping")
+        assertEquals(first, first)
+        assertTrue(first != second)
+        assertEquals(first.hashCode(), first.hashCode())
     }
 
     private data class LineDto(val productId: String, val unitPrice: Int)

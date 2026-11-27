@@ -14,6 +14,8 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+import java.util.UUID
 
 enum class Method {
     GET,
@@ -123,11 +125,16 @@ fun RequestConfig.downloadFile(
     // Download next to the destination and move it into place only after a 2xx, so an error
     // response never replaces an existing file or is left behind as the "downloaded" file.
     val target = destination.toAbsolutePath()
-    val partial = Files.createTempFile(target.parent, "${target.fileName}.", ".part")
+    val fileName = requireNotNull(target.fileName) { "destination '$destination' has no file name" }
+    val partial = target.resolveSibling("$fileName.${UUID.randomUUID()}.part")
     try {
+        // TRUNCATE_EXISTING matters: after a 401 the request is sent again into the same file, and
+        // without it the tail of a longer error body would survive behind the downloaded content.
         val response = send(
             GET, body = null, path, queryParams, headers, contentType = null, pathParams, accept = "*/*",
-            HttpResponse.BodyHandlers.ofFile(partial),
+            HttpResponse.BodyHandlers.ofFile(
+                partial, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING,
+            ),
         )
         val status = response.statusCode()
         if (status !in 200..299) {
@@ -219,16 +226,15 @@ internal fun RequestConfig.buildRequest(
     pathParams: Map<String, Any> = emptyMap(),
     accept: String = "application/json",
 ): HttpRequest {
-    // The publisher and the Content-Type that describes it; null when the request has no body.
+    // The publisher and the Content-Type the body has by default; null when the request has no body.
     val content: Pair<HttpRequest.BodyPublisher, String>? = when (method) {
         GET, DELETE -> null
         POST, PUT, PATCH -> when (body) {
             null -> null
             is MultipartBody -> HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()) to body.contentTypeHeader
-            is ByteArray -> HttpRequest.BodyPublishers.ofByteArray(body) to (contentType ?: "application/octet-stream")
-            is String -> HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8) to (contentType ?: "application/json")
-            else -> HttpRequest.BodyPublishers.ofString(body.asJson(objectMapper), StandardCharsets.UTF_8) to
-                (contentType ?: "application/json")
+            is ByteArray -> HttpRequest.BodyPublishers.ofByteArray(body) to "application/octet-stream"
+            is String -> HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8) to "application/json"
+            else -> HttpRequest.BodyPublishers.ofString(body.asJson(objectMapper), StandardCharsets.UTF_8) to "application/json"
         }
     }
 
@@ -238,11 +244,14 @@ internal fun RequestConfig.buildRequest(
         .method(method.name, content?.first ?: HttpRequest.BodyPublishers.noBody())
         .setHeader("Accept", accept)
 
+    // Content-Type, weakest first: the body's default, the config's headers, this call's
+    // contentType, this call's headers. Each later one is more specific to the request.
     if (content != null) builder.setHeader("Content-Type", content.second)
     if (!hasAuthorizationHeader(headers)) authorization?.let { builder.setHeader("Authorization", it.headerValue()) }
     this.headers.forEach { (name, value) -> builder.setHeader(name, value) }
+    if (content != null && contentType != null) builder.setHeader("Content-Type", contentType)
     headers.forEach { (name, value) -> builder.setHeader(name, value) }
-    // A multipart body is unreadable without its own boundary, so no header may replace this one.
+    // A multipart body is unreadable without its own boundary, so nothing may replace this one.
     if (content != null && body is MultipartBody) builder.setHeader("Content-Type", body.contentTypeHeader)
 
     return builder.build()
@@ -299,7 +308,8 @@ internal inline fun <reified T> HttpResponse<ByteArray>.bodyAs(objectMapper: Obj
         throw statusException(status, String(body(), StandardCharsets.UTF_8))
     }
     if (T::class == ByteArray::class) {
-        return (if (body().isEmpty() && null is T) null else body()) as T
+        // Only 204 means "nothing there"; an empty 200 is a real, empty file.
+        return (if (status == 204 && null is T) null else body()) as T
     }
     return String(body(), StandardCharsets.UTF_8).asType(objectMapper)
 }
