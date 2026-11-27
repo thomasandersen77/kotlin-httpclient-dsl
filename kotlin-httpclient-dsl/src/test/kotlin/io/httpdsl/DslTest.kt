@@ -605,6 +605,12 @@ class DslTest {
 
         val absolute = assertFailsWith<IllegalArgumentException> { http.get("https://other.example.com/v1/orders") }
         assertEquals("path must be relative to baseUrl, got 'https://other.example.com/v1/orders'", absolute.message)
+        assertFailsWith<IllegalArgumentException> { http.get("//other.example.com/v1/orders") }
+
+        // A colon in the first segment is a path, not a scheme, with or without the leading slash.
+        wiremock.stubFor(post(urlEqualTo("/v1/orders:cancel?api_key=abc")).willReturn(aResponse().withStatus(204)))
+        assertEquals(204, http.post("orders:cancel").statusCode())
+        assertEquals(204, http.post("/orders:{action}", "cancel").statusCode())
     }
 
     @Test

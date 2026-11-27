@@ -137,6 +137,8 @@ class RequestConfigTest {
         assertThrows(IllegalArgumentException::class.java) { MultipartBody(boundary = "b\r\n") }
         assertThrows(IllegalArgumentException::class.java) { MultipartBody(boundary = "") }
         assertThrows(IllegalArgumentException::class.java) { MultipartBody(boundary = "a; b") }
+        assertThrows(IllegalArgumentException::class.java) { MultipartBody(boundary = "a=b") }
+        assertThrows(IllegalArgumentException::class.java) { MultipartBody(boundary = "a/b") }
         assertThrows(IllegalArgumentException::class.java) { MultipartBody(boundary = "x".repeat(71)) }
         MultipartBody(boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW")
         assertThrows(IllegalArgumentException::class.java) { multipart { file("doc", java.nio.file.Path.of("/")) } }
@@ -170,6 +172,13 @@ class RequestConfigTest {
             RequestConfig(url = "https://api.example.com").resolveUri("https://other.example.com/v1")
         }
         assertEquals("path must be relative to RequestConfig.url, got 'https://other.example.com/v1'", absolute.message)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            RequestConfig(url = "https://api.example.com").resolveUri("//other.example.com/v1")
+        }
+        // A colon in the first segment is a path, not a scheme, with or without the leading slash.
+        assertEquals("https://api.example.com/v1/orders:cancel", RequestConfig(url = "https://api.example.com/v1").resolveUri("orders:cancel").toString())
+        assertEquals("https://api.example.com/v1/orders:cancel", RequestConfig(url = "https://api.example.com/v1").resolveUri("/orders:cancel").toString())
 
         val missingHostConfig = RequestConfig(url = "/relative")
         assertThrows(IllegalArgumentException::class.java) {
@@ -208,6 +217,13 @@ class RequestConfigTest {
         fun contentTypeOf(method: Method, body: Any?) =
             config.buildRequest(method = method, body = body, path = "/items").headers().allValues("Content-Type")
 
+        // Also when a Content-Type is asked for in headers: a request without a body has none.
+        val jsonApi = RequestConfig(url = "http://localhost", headers = mapOf("Content-Type" to "application/vnd.api+json", "X-Tenant" to "acme"))
+        for (method in listOf(Method.GET, Method.DELETE, Method.POST)) {
+            val request = jsonApi.buildRequest(method = method, body = null, path = "/items", headers = mapOf("content-type" to "text/plain"))
+            assertEquals(emptyList<String>(), request.headers().allValues("Content-Type"), method.name)
+            assertEquals(listOf("acme"), request.headers().allValues("X-Tenant"))
+        }
         assertEquals(emptyList<String>(), contentTypeOf(Method.GET, null))
         assertEquals(emptyList<String>(), contentTypeOf(Method.DELETE, null))
         assertEquals(emptyList<String>(), contentTypeOf(Method.POST, null))

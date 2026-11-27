@@ -91,10 +91,7 @@ data class RequestConfig(
         require(!baseUri.scheme.isNullOrBlank() && !baseUri.host.isNullOrBlank()) {
             "RequestConfig.url must include scheme and host, got '$url'"
         }
-        val pathUri = URI.create(path)
-        require(pathUri.scheme == null && pathUri.rawAuthority == null) {
-            "path must be relative to RequestConfig.url, got '$path'"
-        }
+        val pathUri = URI.create(relativePath(path, "RequestConfig.url"))
         val basePath = baseUri.rawPath.orEmpty()
         val subPath = pathUri.rawPath.orEmpty()
         val combinedPath = when {
@@ -119,6 +116,17 @@ data class RequestConfig(
         val userInfoPrefix = baseUri.rawUserInfo?.let { "$it@" }.orEmpty()
         return URI.create("${baseUri.scheme}://$userInfoPrefix${baseUri.host}$portSuffix$combinedPath$combinedQuery$fragmentSuffix")
     }
+}
+
+private val absoluteUrl = Regex("^([A-Za-z][A-Za-z0-9+.-]*:)?//")
+
+/**
+ * A path is always relative to the base URL. Written without a leading slash, a first segment
+ * with a colon (`orders:cancel`) would be read as a URI scheme, so the slash is added here.
+ */
+private fun relativePath(path: String, base: String): String {
+    require(!absoluteUrl.containsMatchIn(path)) { "path must be relative to $base, got '$path'" }
+    return if (path.isEmpty() || path[0] in "/?#") path else "/$path"
 }
 
 /** Null is skipped; an `Iterable` or any array gives one value per non-null element (`id=1&id=2`). */

@@ -126,6 +126,8 @@ fun RequestConfig.downloadFile(
     // response never replaces an existing file or is left behind as the "downloaded" file.
     val target = destination.toAbsolutePath()
     val fileName = requireNotNull(target.fileName) { "destination '$destination' has no file name" }
+    // Checked before the request is sent, so a typo in the path does not cost a download.
+    require(Files.isDirectory(target.parent)) { "destination directory '${target.parent}' does not exist" }
     val partial = target.resolveSibling("$fileName.${UUID.randomUUID()}.part")
     try {
         // TRUNCATE_EXISTING matters: after a 401 the request is sent again into the same file, and
@@ -248,9 +250,11 @@ internal fun RequestConfig.buildRequest(
     // contentType, this call's headers. Each later one is more specific to the request.
     if (content != null) builder.setHeader("Content-Type", content.second)
     if (!hasAuthorizationHeader(headers)) authorization?.let { builder.setHeader("Authorization", it.headerValue()) }
-    this.headers.forEach { (name, value) -> builder.setHeader(name, value) }
+    // Without a body there is no content to describe, whoever asked for a Content-Type.
+    fun applies(name: String) = content != null || !name.equals("Content-Type", ignoreCase = true)
+    this.headers.forEach { (name, value) -> if (applies(name)) builder.setHeader(name, value) }
     if (content != null && contentType != null) builder.setHeader("Content-Type", contentType)
-    headers.forEach { (name, value) -> builder.setHeader(name, value) }
+    headers.forEach { (name, value) -> if (applies(name)) builder.setHeader(name, value) }
     // A multipart body is unreadable without its own boundary, so nothing may replace this one.
     if (content != null && body is MultipartBody) builder.setHeader("Content-Type", body.contentTypeHeader)
 

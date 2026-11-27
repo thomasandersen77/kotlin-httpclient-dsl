@@ -505,6 +505,12 @@ internal class FooHttpClientTest {
         assertEquals(listOf("report.pdf"), tempDir.toFile().list()!!.toList())
         assertThrows(HttpClientException::class.java) { config.downloadFile("/api/missing.pdf", tempDir.resolve("new.pdf")) }
         assertFalse(Files.exists(tempDir.resolve("new.pdf")))
+
+        // A destination that cannot be written is reported before anything is requested.
+        wiremock.resetRequests()
+        assertThrows(IllegalArgumentException::class.java) { config.downloadFile("/api/missing.pdf", tempDir.resolve("no-such-dir/x.pdf")) }
+        assertThrows(IllegalArgumentException::class.java) { config.downloadFile("/api/missing.pdf", Path.of("/")) }
+        wiremock.verify(0, getRequestedFor(urlEqualTo("/api/missing.pdf")))
     }
 
     @Test

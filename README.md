@@ -159,13 +159,13 @@ class FooHttpClient(private val config: RequestConfig) {
 - **Authorization:** one `authorization` on the config, asked for the header value on every request. `Authorization.basic(user, password)` and `Authorization.bearer(token)` are static, `Authorization.bearer { token() }` asks for a token each time, and `Authorization.cachedBearer { fetchToken() }` fetches once and, after a `401`, fetches again and resends the request once. Any other scheme is a lambda: `authorization = { "ApiKey $key" }`. An `Authorization` entry in `headers` takes its place.
 - **Path placeholders:** `{name}` in a path is replaced with the URL-encoded value from `pathParams`. A placeholder without a value, or a value without a placeholder, is an `IllegalArgumentException`.
 - **Status and headers:** `config.exchange<T>(Method.POST, path, body)` returns `HttpResult(status, headers, body)`; `result.header("Location")` reads a response header.
-- **Headers sent:** `Accept: application/json` (`*/*` for `ByteArray` results and `downloadFile`), and `Content-Type` only when the request has a body: `application/octet-stream` for a `ByteArray`, the multipart type for `multipart { }`, otherwise `application/json`. A `Content-Type` in the config's `headers` replaces that default, a call's `contentType` replaces both, and the call's own `headers` come last. A multipart body always keeps its own type and boundary.
-- **Downloads:** `downloadFile` writes to the destination only after a `2xx`; a failed download leaves an existing file as it was.
+- **Headers sent:** `Accept: application/json` (`*/*` for `ByteArray` results and `downloadFile`), and `Content-Type` only when the request has a body (a `Content-Type` in `headers` is left out for a request without one): `application/octet-stream` for a `ByteArray`, the multipart type for `multipart { }`, otherwise `application/json`. A `Content-Type` in the config's `headers` replaces that default, a call's `contentType` replaces both, and the call's own `headers` come last. A multipart body always keeps its own type and boundary.
+- **Downloads:** `downloadFile` writes to the destination only after a `2xx`; a failed download leaves an existing file as it was. The destination directory must exist.
 - **Empty responses:** `getOrNull` gives `null` for `404`, and for an empty body. For `ByteArray` only a `204` counts as empty; an empty `200` is an empty file.
 - The top-level `httpGet`, `httpPost`, ... helpers are deprecated in favour of the extension functions.
 
 - **Raw text, binary, and multipart uploads:** Pass `contentType = "text/plain"` or `"application/x-www-form-urlencoded"` for raw `String` bodies, `ByteArray` for binary payloads/downloads (`config.get<ByteArray>(...)` / `config.downloadFile(path, destination)`), or `multipart { field(...); file(...) }` for `multipart/form-data`.
-- **Error handling:** Responses outside `200..299` throw `HttpException` (`HttpClientException` for `4xx`, `HttpServerException` for `5xx`), retaining `status` and `body`. `getOrNull` returns `null` on `404` and `204`.
+- **Error handling:** Responses outside `200..299` throw `HttpException` (`HttpClientException` for `4xx`, `HttpServerException` for `5xx`), retaining `status` and `body`.
 
 ---
 
@@ -375,7 +375,8 @@ Behaviour that is easy to trip over:
 - `Authorization.bearer { ... }` and a plain lambda never retry; only `cachedBearer` (or your own `onUnauthorized`) resends after a `401`.
 - The default `HttpClient` is shared between configs. Do not `close()` `config.httpClient` unless you passed that client in yourself.
 - `RequestConfig` keeps the `headers` map you give it; do not change that map afterwards.
-- A `path` must be relative to the config's `url` (or the client's `baseUrl` in the DSL); an absolute URL is rejected.
+- A `path` must be relative to the config's `url` (or the client's `baseUrl` in the DSL); an absolute URL is rejected. A leading slash is optional, so `orders:cancel` and `/orders:cancel` are the same path.
+- A custom multipart `boundary` may only use letters, digits and `' + _ - .`
 - There is no `form(...)` helper here; pass an encoded `String` body with `contentType = "application/x-www-form-urlencoded"`.
 
 **Both modules**

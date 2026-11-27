@@ -290,6 +290,14 @@ class DslUsageExamplesTest {
         assertEquals(2, issued)
         wiremock.verify(2, getRequestedFor(urlEqualTo("/orders")).withHeader("Authorization", equalTo("Bearer token-1")))
         wiremock.verify(1, getRequestedFor(urlEqualTo("/orders")).withHeader("Authorization", equalTo("Bearer token-2")))
+
+        // A 401 also makes it fetch again, and the request is sent once more with the new token.
+        wiremock.stubFor(get(urlEqualTo("/revoked")).withHeader("Authorization", equalTo("Bearer token-2"))
+            .willReturn(aResponse().withStatus(401)))
+        wiremock.stubFor(get(urlEqualTo("/revoked")).withHeader("Authorization", equalTo("Bearer token-3"))
+            .willReturn(aResponse().withStatus(200)))
+        assertEquals(200, http.get("/revoked").statusCode())
+        assertEquals(3, issued)
     }
 
     @BeforeEach

@@ -81,11 +81,22 @@ class HttpClientDsl(
         uriVariables: Array<out Any>,
         configure: RequestDsl.() -> Unit,
     ): HttpResponse<String> {
-        val uri = joinUrl(baseUri, UriExpander.expand(path, *uriVariables))
+        val uri = joinUrl(baseUri, UriExpander.expand(relativePath(path, "baseUrl"), *uriVariables))
         return RequestDsl(method, httpClient, authorization, objectMapper, defaultHeaders, requestTimeout)
             .apply(configure)
             .exchange(uri)
     }
+}
+
+private val absoluteUrl = Regex("^([A-Za-z][A-Za-z0-9+.-]*:)?//")
+
+/**
+ * A path is always relative to the base URL. Written without a leading slash, a first segment
+ * with a colon (`orders:cancel`) would be read as a URI scheme, so the slash is added here.
+ */
+private fun relativePath(path: String, base: String): String {
+    require(!absoluteUrl.containsMatchIn(path)) { "path must be relative to $base, got '$path'" }
+    return if (path.isEmpty() || path[0] in "/?#") path else "/$path"
 }
 
 /**

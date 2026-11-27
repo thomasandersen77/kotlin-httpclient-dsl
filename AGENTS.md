@@ -82,7 +82,8 @@ Each module is meant to be used as one dependency. They must stay independent of
   shared `dslObjectMapper` must never be reachable through a public property.
 - `baseUrl` is parsed once; `joinUrl` joins it with the expanded path structurally (paths with one
   slash, queries combined, the path's fragment first). It must include scheme and host, and
-  the path must not have a scheme or authority.
+  the path must not be an absolute URL (`relativePath` rejects `scheme://` and `//host`, and adds
+  the leading slash so a first segment with a colon is not read as a scheme).
 - `defaultHeaders` is copied in the constructor.
 - `HttpStatusException` has `status`, `body`, `method` and `uri`. Its message is
   `HTTP status <n> for <METHOD> <scheme://host[:port]/path>` when thrown by `bodyAs` and
@@ -109,8 +110,8 @@ Each module is meant to be used as one dependency. They must stay independent of
   is part of `url`. `defaultHttpClient` (shared) and `mapper` are `internal`; `objectMapper`
   defaults to `defaultObjectMapper()`, a fresh copy per config. `toString()` prints header names
   only, never the authorization, and the url without user info and query.
-- `resolveUri` rejects a `path` with a scheme or authority and leaves the base path untouched
-  for an empty path.
+- `resolveUri` rejects an absolute URL as `path` (same `relativePath` rule as the DSL module, with
+  its own copy of the helper) and leaves the base path untouched for an empty path.
 - `Authorization` (`Authorization.kt`) is this module's own `fun interface`, deliberately
   not shared with the DSL module: `headerValue()` is called once per sent request, and
   `onUnauthorized(rejectedHeaderValue)` (default `false`) decides whether `send` resends once
@@ -124,15 +125,16 @@ Each module is meant to be used as one dependency. They must stay independent of
 - A `queryParams` value that is an `Iterable` or an array gives one parameter per non-null element.
 - `exchange<T>(method, path, ...)` returns `HttpResult(status, headers, body)`; `Method` is public.
 - `Accept` is `application/json`, or `*/*` for `ByteArray` results and `downloadFile`.
-  `Content-Type` is set only when the request has a body. Precedence, weakest first: the
+  `Content-Type` is set only when the request has a body; without one, a `Content-Type` in either
+  `headers` map is dropped. Precedence, weakest first: the
   body's default (`application/octet-stream` for a `ByteArray`, `application/json` otherwise),
   the config's `headers`, the call's `contentType`, the call's `headers`. A `MultipartBody`
   always supplies its own, set last so nothing can replace the boundary.
 - `downloadFile` writes to a `.part` file beside the destination, opened with
   `TRUNCATE_EXISTING` because a 401 resend reuses it, and moves it into place only after a 2xx;
-  the `.part` file is always removed.
+  the `.part` file is always removed. The destination directory is checked before the request.
 - `MultipartBody` rejects CR/LF in names, filenames and content types, and requires an
-  RFC 2046 boundary (1-70 characters, no spaces).
+  boundary of 1-70 characters from `A-Z a-z 0-9 ' + _ - .`, which is safe unquoted in the header.
 - For `ByteArray` results only a 204 is "no content" (`getOrNull` gives `null`); an empty 200
   is an empty array.
 - `httpGet/httpGetOrNull/httpPost/httpPut/httpPatch/httpDelete` are `@Deprecated` wrappers around
