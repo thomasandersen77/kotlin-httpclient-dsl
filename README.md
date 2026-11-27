@@ -1,4 +1,4 @@
-# kotlin-httpclient-dsl
+# httpkt
 
 A small Kotlin library for calling HTTP APIs. It is built on the JDK's own `java.net.http.HttpClient`
 and uses Jackson for JSON. Requires **Java 11** or newer.
@@ -15,8 +15,8 @@ The aim is that an outgoing call reads like what it does, and that adding the li
 
 | Module | Style | Package |
 | --- | --- | --- |
-| `kotlin-httpclient-dsl` | A receiver-lambda DSL: `http.post("/orders") { json(order) }` | `io.github.thomasandersen77.httpclient.dsl` |
-| `kotlin-httpclient-functions` | Typed functions on a config: `config.get<Order>("/orders/{id}", ...)` | `io.github.thomasandersen77.httpclient.functions` |
+| `httpkt-dsl` | A receiver-lambda DSL: `http.post("/orders") { json(order) }` | `io.github.httpkt.dsl` |
+| `httpkt-functions` | Typed functions on a config: `config.get<Order>("/orders/{id}", ...)` | `io.github.httpkt.functions` |
 
 Use the DSL when you want to shape each request and look at the response; use the functions when you
 mostly want a typed result back in one line.
@@ -28,16 +28,16 @@ The library is not published to a public repository yet. Build it into your loca
 
 ```xml
 <dependency>
-    <groupId>io.github.thomasandersen77</groupId>
-    <artifactId>kotlin-httpclient-dsl</artifactId>
+    <groupId>io.github.httpkt</groupId>
+    <artifactId>httpkt-dsl</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 </dependency>
 ```
 
 ```xml
 <dependency>
-    <groupId>io.github.thomasandersen77</groupId>
-    <artifactId>kotlin-httpclient-functions</artifactId>
+    <groupId>io.github.httpkt</groupId>
+    <artifactId>httpkt-functions</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 </dependency>
 ```
@@ -64,7 +64,7 @@ That keeps an XML library off your classpath unless you add one yourself.
 
 ---
 
-## 1. DSL Module (`kotlin-httpclient-dsl`)
+## 1. DSL Module (`httpkt-dsl`)
 
 ```kotlin
 val http = HttpClientDsl("http://localhost:8080")
@@ -135,7 +135,7 @@ Calling `response.bodyAs<T>()` deserializes `2xx` responses, returns the raw tex
 
 ---
 
-## 2. Functions Module (`kotlin-httpclient-functions`)
+## 2. Functions Module (`httpkt-functions`)
 
 Create a `RequestConfig` and build typed domain clients (such as the `FooHttpClient` example in the tests) using `get`, `getOrNull`, `post`, `put`, `patch`, `delete`, `exchange`, and `downloadFile`:
 
@@ -186,17 +186,17 @@ GET https://api.example.com/slow failed after 5003 ms: HttpTimeoutException
 A line has the method, the URL and the outcome, and timeouts and connection errors get a line too.
 It never contains the query string, user info, headers or bodies.
 
-The logger names are `io.github.thomasandersen77.httpclient.dsl` and `io.github.thomasandersen77.httpclient.functions`,
-so their parent `io.github.thomasandersen77.httpclient` covers both. Where the lines end up depends on your application:
+The logger names are `io.github.httpkt.dsl` and `io.github.httpkt.functions`,
+so their parent `io.github.httpkt` covers both. Where the lines end up depends on your application:
 
 | Your logging | What to do |
 | --- | --- |
-| SLF4J 2 with Logback | Add `org.slf4j:slf4j-jdk-platform-logging` to your application, then set `io.github.thomasandersen77.httpclient` to `DEBUG` as usual |
-| Log4j 2 | Add `org.apache.logging.log4j:log4j-jpl`, then set `io.github.thomasandersen77.httpclient` to `DEBUG` |
-| Spring Boot | Boot routes `java.util.logging` to its own logging, so `logging.level.io.github.thomasandersen77.httpclient=DEBUG` should be enough (not verified in this repository) |
-| Nothing | It goes to `java.util.logging`: set the level of `io.github.thomasandersen77.httpclient` to `FINE` |
+| SLF4J 2 with Logback | Add `org.slf4j:slf4j-jdk-platform-logging` to your application, then set `io.github.httpkt` to `DEBUG` as usual |
+| Log4j 2 | Add `org.apache.logging.log4j:log4j-jpl`, then set `io.github.httpkt` to `DEBUG` |
+| Spring Boot | Boot routes `java.util.logging` to its own logging, so `logging.level.io.github.httpkt=DEBUG` should be enough (not verified in this repository) |
+| Nothing | It goes to `java.util.logging`: set the level of `io.github.httpkt` to `FINE` |
 
-Without one of the bridges, a `<logger name="io.github.thomasandersen77.httpclient" level="DEBUG"/>` in `logback.xml` shows nothing,
+Without one of the bridges, a `<logger name="io.github.httpkt" level="DEBUG"/>` in `logback.xml` shows nothing,
 because the lines go to `java.util.logging` instead.
 
 For what happens below the library, the JDK's `HttpClient` has its own switch, which needs no code:
@@ -207,8 +207,8 @@ For what happens below the library, the JDK's `HttpClient` has its own switch, w
 ## 3. More usage examples
 
 The snippets below come from runnable tests, which also show what goes over the wire:
-[`DslUsageExamplesTest.kt`](kotlin-httpclient-dsl/src/test/kotlin/io/github/thomasandersen77/httpclient/dsl/DslUsageExamplesTest.kt) and
-[`FunctionsUsageExamplesTest.kt`](kotlin-httpclient-functions/src/test/kotlin/io/github/thomasandersen77/httpclient/functions/FunctionsUsageExamplesTest.kt).
+[`DslUsageExamplesTest.kt`](httpkt-dsl/src/test/kotlin/io/github/httpkt/dsl/DslUsageExamplesTest.kt) and
+[`FunctionsUsageExamplesTest.kt`](httpkt-functions/src/test/kotlin/io/github/httpkt/functions/FunctionsUsageExamplesTest.kt).
 
 ### DSL: a small typed client
 

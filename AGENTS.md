@@ -1,4 +1,4 @@
-# kotlin-httpclient-dsl — Agent guide
+# httpkt — Agent guide
 
 Repository facts below were checked against the source and Maven configuration on
 2026-11-27. Read this file before working here. This repository is independent of
@@ -24,10 +24,14 @@ The root Maven reactor contains **two** modules:
 
 | Module | Purpose | Main package |
 | --- | --- | --- |
-| `kotlin-httpclient-dsl` | Receiver-lambda DSL for requests, headers and JSON/raw bodies | `io.github.thomasandersen77.httpclient.dsl` |
-| `kotlin-httpclient-functions` | Function-based HTTP helpers on `RequestConfig` | `io.github.thomasandersen77.httpclient.functions` |
+| `httpkt-dsl` | Receiver-lambda DSL for requests, headers and JSON/raw bodies | `io.github.httpkt.dsl` |
+| `httpkt-functions` | Function-based HTTP helpers on `RequestConfig` | `io.github.httpkt.functions` |
 
-Each module is meant to be used as one dependency. They must stay independent of each other.
+The library is called httpkt (the Git repository may still carry its old name,
+`kotlin-httpclient-dsl`). The root project is `httpkt-parent` and the `groupId` is
+`io.github.httpkt`, which can only be published to Maven Central by whoever holds the GitHub
+organization `httpkt`. Each module is meant to be used as one dependency. They must stay
+independent of each other.
 
 ## Request paths through the code
 
@@ -152,7 +156,7 @@ Each module is meant to be used as one dependency. They must stay independent of
 ### Logging (both modules)
 
 Each module has an internal `Logging.kt` with the same content apart from the package and the
-logger name (`io.github.thomasandersen77.httpclient.dsl`, `io.github.thomasandersen77.httpclient.functions`). It uses `System.Logger`, never SLF4J or any
+logger name (`io.github.httpkt.dsl`, `io.github.httpkt.functions`). It uses `System.Logger`, never SLF4J or any
 other logging dependency, and logs only at `DEBUG` with lazy `Supplier` messages:
 
 - one line per response: `<METHOD> <url> -> <status> in <n> ms`
@@ -176,8 +180,8 @@ checked in. Inspect `java -version` and `mvn -version` before diagnosing build e
 mvn clean test
 
 # A single module and its reactor prerequisites
-mvn -pl kotlin-httpclient-dsl -am test
-mvn -pl kotlin-httpclient-functions -am test
+mvn -pl httpkt-dsl -am test
+mvn -pl httpkt-functions -am test
 
 # Full Maven lifecycle verification
 mvn clean verify
