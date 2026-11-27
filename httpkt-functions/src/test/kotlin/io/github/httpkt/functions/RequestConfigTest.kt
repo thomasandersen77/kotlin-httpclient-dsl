@@ -176,6 +176,9 @@ class RequestConfigTest {
         assertThrows(IllegalArgumentException::class.java) {
             RequestConfig(url = "https://api.example.com").resolveUri("//other.example.com/v1")
         }
+        assertThrows(IllegalArgumentException::class.java) {
+            RequestConfig(url = "https://api.example.com").resolveUri("http:/orders")
+        }
         // A colon in the first segment is a path, not a scheme, with or without the leading slash.
         assertEquals("https://api.example.com/v1/orders:cancel", RequestConfig(url = "https://api.example.com/v1").resolveUri("orders:cancel").toString())
         assertEquals("https://api.example.com/v1/orders:cancel", RequestConfig(url = "https://api.example.com/v1").resolveUri("/orders:cancel").toString())

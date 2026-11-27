@@ -54,7 +54,7 @@ class OrderClient(private val http: HttpClientDsl) {
     fun create(order: NewOrderDto): URI {
         val response = http.post("/orders") { json(order) }
         response.bodyAs<Unit>()   // throws HttpStatusException, naming the request, unless 2xx
-        return URI.create(response.headers().firstValue("Location").orElseThrow())
+        return URI.create(response.header("Location") ?: error("created, but no Location header"))
     }
 
     /** `bodyAs<Unit>()` is a compact way to say "any 2xx is fine, throw otherwise". */
@@ -209,7 +209,7 @@ class DslUsageExamplesTest {
         val outcome = when (response.statusCode()) {
             201 -> "created"
             422 -> http.objectMapper.readValue<ApiErrorDto>(response.body()).message
-            else -> throw HttpStatusException(response.statusCode(), response.body())
+            else -> throw response.toStatusException()
         }
         assertEquals("An order needs at least one item", outcome)
     }

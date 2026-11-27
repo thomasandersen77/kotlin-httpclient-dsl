@@ -86,7 +86,8 @@ independent of each other.
   shared `dslObjectMapper` must never be reachable through a public property.
 - `baseUrl` is parsed once; `joinUrl` joins it with the expanded path structurally (paths with one
   slash, queries combined, the path's fragment first). It must include scheme and host, and
-  the path must not be an absolute URL (`relativePath` rejects `scheme://` and `//host`, and adds
+  the path must not be an absolute URL (`relativePath` rejects `scheme://`, `//host` and anything
+  starting with `http:` or `https:`, and adds
   the leading slash so a first segment with a colon is not read as a scheme).
 - `defaultHeaders` is copied in the constructor.
 - `HttpStatusException` has `status`, `body`, `method` and `uri`. Its message is
@@ -95,6 +96,8 @@ independent of each other.
   string, user info or response body. `HttpStatusException.bodyAs<T>()` and
   `HttpResponse.bodyAs<T>()` share `convertBody`.
 - `bodyAsOrNull<T>()` returns `null` for a `404` and otherwise behaves as `bodyAs<T?>()`.
+- `HttpResponse<*>.header(name)` returns the first value or `null`; `HttpResponse<String>.toStatusException()`
+  builds the exception `bodyAs` would throw (method, uri and the client's mapper included).
 - `get/post/put/patch/delete` return the `HttpResponse<String>` for every HTTP status without
   throwing. `bodyAs<T>()` throws `HttpStatusException` when the status is
   outside `200..299`, returns `Unit` when `T` is `Unit`, returns the raw text unparsed when
@@ -136,13 +139,12 @@ independent of each other.
   always supplies its own, set last so nothing can replace the boundary.
 - `downloadFile` writes to a `.part` file beside the destination, opened with
   `TRUNCATE_EXISTING` because a 401 resend reuses it, and moves it into place only after a 2xx;
-  the `.part` file is always removed. The destination directory is checked before the request.
+  the `.part` file is always removed. Before the request it checks that the normalized
+  destination is not a directory and that its parent directory exists.
 - `MultipartBody` rejects CR/LF in names, filenames and content types, and requires an
   boundary of 1-70 characters from `A-Z a-z 0-9 ' + _ - .`, which is safe unquoted in the header.
 - For `ByteArray` results only a 204 is "no content" (`getOrNull` gives `null`); an empty 200
   is an empty array.
-- `httpGet/httpGetOrNull/httpPost/httpPut/httpPatch/httpDelete` are `@Deprecated` wrappers around
-  the extensions; `FooHttpClientTest` still covers them under `@Suppress("DEPRECATION")`.
 - Statuses `200..299` succeed; `400..499` throw `HttpClientException`; `500..599` throw
   `HttpServerException`; other non-2xx statuses (including `3xx` when not followed) throw
   `HttpException`. All inherit from `HttpException(status, body, message)`.

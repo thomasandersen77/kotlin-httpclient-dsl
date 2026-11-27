@@ -88,11 +88,13 @@ class HttpClientDsl(
     }
 }
 
-private val absoluteUrl = Regex("^([A-Za-z][A-Za-z0-9+.-]*:)?//")
+private val absoluteUrl = Regex("^(([A-Za-z][A-Za-z0-9+.-]*:)?//|https?:)", RegexOption.IGNORE_CASE)
 
 /**
  * A path is always relative to the base URL. Written without a leading slash, a first segment
  * with a colon (`orders:cancel`) would be read as a URI scheme, so the slash is added here.
+ * Rejected as absolute: `scheme://...`, `//host...`, and anything starting with `http:` or
+ * `https:`. Any other `word:rest` is taken as a path segment.
  */
 private fun relativePath(path: String, base: String): String {
     require(!absoluteUrl.containsMatchIn(path)) { "path must be relative to $base, got '$path'" }
@@ -201,6 +203,17 @@ internal inline fun <reified T> convertBody(content: String, status: Int, object
     }
     return objectMapper.readValue(content)
 }
+
+/** The first value of the response header [name] (case-insensitive), or `null` when it is absent. */
+fun HttpResponse<*>.header(name: String): String? = headers().firstValue(name).orElse(null)
+
+/**
+ * The exception [bodyAs] would throw for this response, whatever its status. Use it when you
+ * branch on the status yourself and want the same message, `method`, `uri` and error-body
+ * handling as the library gives.
+ */
+fun HttpResponse<String>.toStatusException(): HttpStatusException =
+    HttpStatusException(statusCode(), body().orEmpty(), request().method(), request().uri(), objectMapper())
 
 /**
  * Like [bodyAs], but a `404` gives `null` instead of an [HttpStatusException], as does an empty

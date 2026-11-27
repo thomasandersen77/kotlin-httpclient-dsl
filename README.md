@@ -131,6 +131,7 @@ GET and DELETE requests reject a body with an `IllegalStateException` before any
 `get`, `post`, `put`, `patch` and `delete` always return `HttpResponse<String>` without throwing on HTTP error statuses.
 Calling `response.bodyAs<T>()` deserializes `2xx` responses, returns the raw text for `bodyAs<String>()` (empty or blank text included), returns `Unit` for `bodyAs<Unit>()`, returns `null` for an empty body when `T` is nullable, and throws `HttpStatusException` when the status is outside `200..299`.
 `response.bodyAsOrNull<T>()` does the same, except that a `404` gives `null`.
+`response.header("Location")` reads a response header as a `String?`, and `response.toStatusException()` gives the exception `bodyAs` would throw, for when you branch on the status yourself.
 `HttpStatusException` carries `status`, `body`, `method` and `uri`; its message names the request (`HTTP status 422 for POST https://api.example.com/orders`) but never contains the query string or the body, so it is safe to log. `e.bodyAs<ApiError>()` reads the error body with the client's `ObjectMapper`, by the same rules as `response.bodyAs`.
 
 ---
@@ -163,7 +164,6 @@ class FooHttpClient(private val config: RequestConfig) {
 - **Headers sent:** `Accept: application/json` (`*/*` for `ByteArray` results and `downloadFile`), and `Content-Type` only when the request has a body (a `Content-Type` in `headers` is left out for a request without one): `application/octet-stream` for a `ByteArray`, the multipart type for `multipart { }`, otherwise `application/json`. A `Content-Type` in the config's `headers` replaces that default, a call's `contentType` replaces both, and the call's own `headers` come last. A multipart body always keeps its own type and boundary.
 - **Downloads:** `downloadFile` writes to the destination only after a `2xx`; a failed download leaves an existing file as it was. The destination directory must exist.
 - **Empty responses:** `getOrNull` gives `null` for `404`, and for an empty body. For `ByteArray` only a `204` counts as empty; an empty `200` is an empty file.
-- The top-level `httpGet`, `httpPost`, ... helpers are deprecated in favour of the extension functions.
 
 - **Raw text, binary, and multipart uploads:** Pass `contentType = "text/plain"` or `"application/x-www-form-urlencoded"` for raw `String` bodies, `ByteArray` for binary payloads/downloads (`config.get<ByteArray>(...)` / `config.downloadFile(path, destination)`), or `multipart { field(...); file(...) }` for `multipart/form-data`.
 - **Error handling:** Responses outside `200..299` throw `HttpException` (`HttpClientException` for `4xx`, `HttpServerException` for `5xx`), retaining `status` and `body`.
@@ -194,7 +194,7 @@ so their parent `io.github.httpkt` covers both. Where the lines end up depends o
 | SLF4J 2 with Logback | Add `org.slf4j:slf4j-jdk-platform-logging` to your application, then set `io.github.httpkt` to `DEBUG` as usual |
 | Log4j 2 | Add `org.apache.logging.log4j:log4j-jpl`, then set `io.github.httpkt` to `DEBUG` |
 | Spring Boot | Boot routes `java.util.logging` to its own logging, so `logging.level.io.github.httpkt=DEBUG` should be enough (not verified in this repository) |
-| Nothing | It goes to `java.util.logging`: set the level of `io.github.httpkt` to `FINE` |
+| Nothing | It goes to `java.util.logging`: set the level of `io.github.httpkt` to `FINE`, and the level of the handler too (`java.util.logging.ConsoleHandler.level = FINE`), since the console handler stops at `INFO` by default |
 
 Without one of the bridges, a `<logger name="io.github.httpkt" level="DEBUG"/>` in `logback.xml` shows nothing,
 because the lines go to `java.util.logging` instead.
@@ -229,7 +229,7 @@ class OrderClient(private val http: HttpClientDsl) {
     fun create(order: NewOrderDto): URI {
         val response = http.post("/orders") { json(order) }
         response.bodyAs<Unit>()                                     // throws HttpStatusException unless 2xx
-        return URI.create(response.headers().firstValue("Location").orElseThrow())
+        return URI.create(response.header("Location") ?: error("created, but no Location header"))
     }
 
     fun cancel(id: Long) {
@@ -274,7 +274,7 @@ val response = http.post("/orders") { json(order) }
 when (response.statusCode()) {
     201 -> response.bodyAs<OrderDto>()
     422 -> http.objectMapper.readValue<ApiErrorDto>(response.body())
-    else -> throw HttpStatusException(response.statusCode(), response.body())
+    else -> throw response.toStatusException()   // the same exception bodyAs would throw
 }
 ```
 
@@ -410,7 +410,7 @@ Behaviour that is easy to trip over:
 - `Authorization.bearer { ... }` and a plain lambda never retry; only `cachedBearer` (or your own `onUnauthorized`) resends after a `401`.
 - The default `HttpClient` is shared between configs. Do not `close()` `config.httpClient` unless you passed that client in yourself.
 - `RequestConfig` keeps the `headers` map you give it; do not change that map afterwards.
-- A `path` must be relative to the config's `url` (or the client's `baseUrl` in the DSL); an absolute URL is rejected. A leading slash is optional, so `orders:cancel` and `/orders:cancel` are the same path.
+- A `path` must be relative to the config's `url` (or the client's `baseUrl` in the DSL). `scheme://...`, `//host...` and anything starting with `http:` or `https:` is rejected as an absolute URL. A leading slash is optional, so `orders:cancel` and `/orders:cancel` are the same path.
 - A custom multipart `boundary` may only use letters, digits and `' + _ - .`
 - There is no `form(...)` helper here; pass an encoded `String` body with `contentType = "application/x-www-form-urlencoded"`.
 

@@ -4,8 +4,9 @@ import com.github.tomakehurst.wiremock.WireMockServer
 import com.github.tomakehurst.wiremock.client.WireMock.*
 import com.github.tomakehurst.wiremock.common.ConsoleNotifier
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration
-import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -17,11 +18,7 @@ import java.nio.file.Path
 import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicInteger
 
-@Suppress("DEPRECATION") // the deprecated http* helpers stay covered until they are removed
 internal class FooHttpClientTest {
-    private val wiremock: WireMockServer = WireMockServer(WireMockConfiguration.options()
-        .dynamicPort()
-        .notifier(ConsoleNotifier(true)))
 
     @Test
     fun getFooByNameNotFound() {
@@ -80,7 +77,7 @@ internal class FooHttpClientTest {
 
         assertEquals(Foo("bar"), fooClient.getFooOrNull("bar"))
         assertNull(fooClient.getFooOrNull("missing"))
-        assertNull(httpGetOrNull<Foo>(config, "/api/empty"))
+        assertNull(config.getOrNull<Foo>("/api/empty"))
 
         val ex403 = assertThrows(HttpClientException::class.java) {
             fooClient.getFooOrNull("forbidden")
@@ -179,7 +176,7 @@ internal class FooHttpClientTest {
         assertEquals(event, withNullParam)
 
         fooClient.deleteFoo("1")
-        val nullableResult: Foo? = httpGet(config, "/api/empty")
+        val nullableResult: Foo? = config.get("/api/empty")
         assertNull(nullableResult)
     }
 
@@ -203,10 +200,10 @@ internal class FooHttpClientTest {
         val fooClient = FooHttpClient(config)
 
         assertEquals(Foo("updated"), fooClient.updateFoo("1", Foo("updated")))
-        assertEquals(Foo("updated"), httpPut<Foo>(config, Foo("updated"), "/api/foo/1"))
+        assertEquals(Foo("updated"), config.put<Foo>("/api/foo/1", Foo("updated")))
         assertEquals(Foo("patched"), config.patch<Foo>("/api/foo/1", Foo("patched")))
-        assertEquals(Foo("patched"), httpPatch<Foo>(config, Foo("patched"), "/api/foo/1"))
-        assertEquals(Foo("bar"), httpPost<Foo>(config, Foo("bar"), "/api/foo", queryParams = mapOf("type" to "bar")))
+        assertEquals(Foo("patched"), config.patch<Foo>("/api/foo/1", body = Foo("patched")))
+        assertEquals(Foo("bar"), config.post<Foo>("/api/foo", Foo("bar"), queryParams = mapOf("type" to "bar")))
 
         wiremock.verify(2, putRequestedFor(urlEqualTo("/api/foo/1"))
             .withHeader("Authorization", equalTo("Basic dXNlcjpwYXNz"))
@@ -234,7 +231,7 @@ internal class FooHttpClientTest {
         assertEquals("internal server failure", ex500.body)
 
         val ex503: HttpException = assertThrows(HttpException::class.java) {
-            httpGet<Foo>(config, "/api/error/503")
+            config.get<Foo>("/api/error/503")
         }
         assertEquals(503, ex503.status)
         assertEquals("service unavailable", ex503.body)
@@ -392,8 +389,8 @@ internal class FooHttpClientTest {
         val unitViaExtension: Unit = config.delete("/api/foo/2")
         assertEquals(Unit, unitViaExtension)
 
-        val unitViaTopLevel: Unit = httpDelete(config, "/api/foo/2")
-        assertEquals(Unit, unitViaTopLevel)
+        val unitAgain: Unit = config.delete("/api/foo/2")
+        assertEquals(Unit, unitAgain)
     }
 
     @Test
@@ -512,6 +509,10 @@ internal class FooHttpClientTest {
         wiremock.resetRequests()
         assertThrows(IllegalArgumentException::class.java) { config.downloadFile("/api/missing.pdf", tempDir.resolve("no-such-dir/x.pdf")) }
         assertThrows(IllegalArgumentException::class.java) { config.downloadFile("/api/missing.pdf", Path.of("/")) }
+        val directory = assertThrows(IllegalArgumentException::class.java) { config.downloadFile("/api/missing.pdf", tempDir) }
+        assertEquals("destination '$tempDir' is a directory, not a file", directory.message)
+        assertThrows(IllegalArgumentException::class.java) { config.downloadFile("/api/missing.pdf", tempDir.resolve("sub/..")) }
+        assertTrue(Files.isDirectory(tempDir), "the directory is still a directory")
         wiremock.verify(0, getRequestedFor(urlEqualTo("/api/missing.pdf")))
     }
 
@@ -640,12 +641,15 @@ internal class FooHttpClientTest {
         // System.Logger ends up in java.util.logging when no other backend is installed.
         val backend = java.util.logging.Logger.getLogger(loggerName)
         val previousLevel = backend.level
+        val previousUseParent = backend.useParentHandlers
         backend.level = java.util.logging.Level.FINE
+        backend.useParentHandlers = false // keep the captured lines out of the console
         backend.addHandler(handler)
         try {
             block()
         } finally {
             backend.removeHandler(handler)
+            backend.useParentHandlers = previousUseParent
             backend.level = previousLevel
         }
         return lines.toList()
@@ -653,7 +657,7 @@ internal class FooHttpClientTest {
 
     @BeforeEach
     internal fun setUp() {
-        wiremock.start()
+        wiremock.resetAll()
         wiremock.stubFor(get(urlEqualTo("/api/foo?name=bar"))
             .willReturn(aResponse()
                 .withStatus(200)
@@ -669,8 +673,17 @@ internal class FooHttpClientTest {
             .willReturn(aResponse().withStatus(204)))
     }
 
-    @AfterEach
-    internal fun tearDown() {
-        wiremock.stop()
+    companion object {
+        // One server for the whole class. Restarting it per test let the shared HttpClient reuse
+        // a pooled connection to a server that had just been stopped.
+        private val wiremock: WireMockServer = WireMockServer(WireMockConfiguration.options()
+            .dynamicPort()
+            .notifier(ConsoleNotifier(true)))
+
+        @BeforeAll @JvmStatic
+        internal fun startWiremock() = wiremock.start()
+
+        @AfterAll @JvmStatic
+        internal fun stopWiremock() = wiremock.stop()
     }
 }

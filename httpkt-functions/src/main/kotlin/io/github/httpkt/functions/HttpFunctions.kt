@@ -124,9 +124,10 @@ fun RequestConfig.downloadFile(
 ): Path {
     // Download next to the destination and move it into place only after a 2xx, so an error
     // response never replaces an existing file or is left behind as the "downloaded" file.
-    val target = destination.toAbsolutePath()
+    val target = destination.toAbsolutePath().normalize()
     val fileName = requireNotNull(target.fileName) { "destination '$destination' has no file name" }
-    // Checked before the request is sent, so a typo in the path does not cost a download.
+    // Checked before the request is sent, so a mistake in the path does not cost a download.
+    require(!Files.isDirectory(target)) { "destination '$destination' is a directory, not a file" }
     require(Files.isDirectory(target.parent)) { "destination directory '${target.parent}' does not exist" }
     val partial = target.resolveSibling("$fileName.${UUID.randomUUID()}.part")
     try {
@@ -142,78 +143,12 @@ fun RequestConfig.downloadFile(
         if (status !in 200..299) {
             throw statusException(status, runCatching { Files.readString(partial, StandardCharsets.UTF_8) }.getOrDefault(""))
         }
-        return Files.move(partial, destination, StandardCopyOption.REPLACE_EXISTING)
+        Files.move(partial, target, StandardCopyOption.REPLACE_EXISTING)
+        return destination
     } finally {
         Files.deleteIfExists(partial)
     }
 }
-
-/*
-    Top-level helper functions. Deprecated: they duplicate the extensions above, and they take
-    `body` before `path`, so swapped arguments compile when the body is a String.
-*/
-@Deprecated("Use the extension function.", ReplaceWith("config.get<T>(path, queryParams, headers)"))
-inline fun <reified T> httpGet(
-    config: RequestConfig,
-    path: String,
-    queryParams: Map<String, Any?> = emptyMap(),
-    headers: Map<String, String> = emptyMap(),
-): T = config.get(path = path, queryParams = queryParams, headers = headers)
-
-@Deprecated("Use the extension function.", ReplaceWith("config.getOrNull<T>(path, queryParams, headers)"))
-inline fun <reified T : Any> httpGetOrNull(
-    config: RequestConfig,
-    path: String,
-    queryParams: Map<String, Any?> = emptyMap(),
-    headers: Map<String, String> = emptyMap(),
-): T? = config.getOrNull(path = path, queryParams = queryParams, headers = headers)
-
-@Deprecated(
-    "Use the extension function; note that it takes path before body.",
-    ReplaceWith("config.post<T>(path, body, queryParams, headers, contentType)"),
-)
-inline fun <reified T> httpPost(
-    config: RequestConfig,
-    body: Any?,
-    path: String,
-    queryParams: Map<String, Any?> = emptyMap(),
-    headers: Map<String, String> = emptyMap(),
-    contentType: String = "application/json",
-): T = config.post(path = path, body = body, queryParams = queryParams, headers = headers, contentType = contentType)
-
-@Deprecated(
-    "Use the extension function; note that it takes path before body.",
-    ReplaceWith("config.put<T>(path, body, queryParams, headers, contentType)"),
-)
-inline fun <reified T> httpPut(
-    config: RequestConfig,
-    body: Any?,
-    path: String,
-    queryParams: Map<String, Any?> = emptyMap(),
-    headers: Map<String, String> = emptyMap(),
-    contentType: String = "application/json",
-): T = config.put(path = path, body = body, queryParams = queryParams, headers = headers, contentType = contentType)
-
-@Deprecated(
-    "Use the extension function; note that it takes path before body.",
-    ReplaceWith("config.patch<T>(path, body, queryParams, headers, contentType)"),
-)
-inline fun <reified T> httpPatch(
-    config: RequestConfig,
-    body: Any?,
-    path: String,
-    queryParams: Map<String, Any?> = emptyMap(),
-    headers: Map<String, String> = emptyMap(),
-    contentType: String = "application/json",
-): T = config.patch(path = path, body = body, queryParams = queryParams, headers = headers, contentType = contentType)
-
-@Deprecated("Use the extension function.", ReplaceWith("config.delete<T>(path, queryParams, headers)"))
-inline fun <reified T> httpDelete(
-    config: RequestConfig,
-    path: String,
-    queryParams: Map<String, Any?> = emptyMap(),
-    headers: Map<String, String> = emptyMap(),
-): T = config.delete(path = path, queryParams = queryParams, headers = headers)
 
 /*
     Build and Execute the Request

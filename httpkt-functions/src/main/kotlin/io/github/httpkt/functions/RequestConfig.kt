@@ -118,11 +118,13 @@ data class RequestConfig(
     }
 }
 
-private val absoluteUrl = Regex("^([A-Za-z][A-Za-z0-9+.-]*:)?//")
+private val absoluteUrl = Regex("^(([A-Za-z][A-Za-z0-9+.-]*:)?//|https?:)", RegexOption.IGNORE_CASE)
 
 /**
  * A path is always relative to the base URL. Written without a leading slash, a first segment
  * with a colon (`orders:cancel`) would be read as a URI scheme, so the slash is added here.
+ * Rejected as absolute: `scheme://...`, `//host...`, and anything starting with `http:` or
+ * `https:`. Any other `word:rest` is taken as a path segment.
  */
 private fun relativePath(path: String, base: String): String {
     require(!absoluteUrl.containsMatchIn(path)) { "path must be relative to $base, got '$path'" }

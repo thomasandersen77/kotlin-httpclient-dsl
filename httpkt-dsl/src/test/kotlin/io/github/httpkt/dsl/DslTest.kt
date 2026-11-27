@@ -606,6 +606,8 @@ class DslTest {
         val absolute = assertFailsWith<IllegalArgumentException> { http.get("https://other.example.com/v1/orders") }
         assertEquals("path must be relative to baseUrl, got 'https://other.example.com/v1/orders'", absolute.message)
         assertFailsWith<IllegalArgumentException> { http.get("//other.example.com/v1/orders") }
+        assertFailsWith<IllegalArgumentException> { http.get("http:/orders") }
+        assertFailsWith<IllegalArgumentException> { http.get("HTTPS:orders") }
 
         // A colon in the first segment is a path, not a scheme, with or without the leading slash.
         wiremock.stubFor(post(urlEqualTo("/v1/orders:cancel?api_key=abc")).willReturn(aResponse().withStatus(204)))
@@ -675,7 +677,7 @@ class DslTest {
 
     @Test
     internal fun `the response prints like the JDK response, and bearer with a lambda asks for a token per request`() {
-        wiremock.stubFor(get(urlEqualTo("/per-request-token")).willReturn(aResponse().withStatus(200)))
+        wiremock.stubFor(get(urlEqualTo("/per-request-token")).willReturn(aResponse().withStatus(200).withHeader("X-Trace", "abc-123")))
         var issued = 0
         val http = HttpClientDsl(
             baseUrl = "http://localhost:${wiremock.port()}",
@@ -686,6 +688,12 @@ class DslTest {
         http.get("/per-request-token")
 
         assertEquals("(GET http://localhost:${wiremock.port()}/per-request-token) 200", response.toString())
+        assertNull(response.header("X-Not-There"))
+        assertEquals("abc-123", response.header("x-trace"))
+        val asException = response.toStatusException()
+        assertEquals(200, asException.status)
+        assertEquals("GET", asException.method)
+        assertEquals("HTTP status 200 for GET http://localhost:${wiremock.port()}/per-request-token", asException.message)
         wiremock.verify(1, getRequestedFor(urlEqualTo("/per-request-token")).withHeader("Authorization", equalTo("Bearer token-1")))
         wiremock.verify(1, getRequestedFor(urlEqualTo("/per-request-token")).withHeader("Authorization", equalTo("Bearer token-2")))
     }
@@ -762,12 +770,15 @@ class DslTest {
         // System.Logger ends up in java.util.logging when no other backend is installed.
         val backend = java.util.logging.Logger.getLogger(loggerName)
         val previousLevel = backend.level
+        val previousUseParent = backend.useParentHandlers
         backend.level = java.util.logging.Level.FINE
+        backend.useParentHandlers = false // keep the captured lines out of the console
         backend.addHandler(handler)
         try {
             block()
         } finally {
             backend.removeHandler(handler)
+            backend.useParentHandlers = previousUseParent
             backend.level = previousLevel
         }
         return lines.toList()
