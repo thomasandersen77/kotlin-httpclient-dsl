@@ -35,7 +35,8 @@ class HttpServerException(
     body: String,
 ) : HttpException(status, body, "HTTP server error $status")
 
-val defaultHttpClient: HttpClient = HttpClient.newBuilder()
+/** Shared by every [RequestConfig] that does not bring its own client, and therefore not public. */
+internal val defaultHttpClient: HttpClient = HttpClient.newBuilder()
     .connectTimeout(Duration.ofSeconds(30))
     .followRedirects(HttpClient.Redirect.NORMAL)
     .build()
@@ -57,6 +58,10 @@ fun defaultObjectMapper(): ObjectMapper = mapper.copy()
  * @param authorization asked for the `Authorization` header value each time a request is sent;
  * see [Authorization]. A `headers` entry named `Authorization` takes its place.
  * @param headers sent with every request; a request's own `headers` replace entries with the same name.
+ * @param httpClient defaults to a client shared with other configs. Do not `close()` the default;
+ * pass your own client if you need to control its lifetime.
+ * @param objectMapper each config gets its own copy of the default unless you pass one, so
+ * reconfiguring it never affects another config. Configs made with `copy()` share their mapper.
  */
 data class RequestConfig(
     val url: String,
@@ -64,19 +69,29 @@ data class RequestConfig(
     val headers: Map<String, String> = emptyMap(),
     val requestTimeout: Duration = Duration.ofSeconds(30),
     val httpClient: HttpClient = defaultHttpClient,
-    val objectMapper: ObjectMapper = mapper,
+    val objectMapper: ObjectMapper = defaultObjectMapper(),
 ) {
+    /** Header values and credentials are left out, so the config is safe to log. */
+    override fun toString(): String =
+        "RequestConfig(url=$url, authorization=${if (authorization == null) "none" else "set"}, " +
+            "headers=${headers.keys}, requestTimeout=$requestTimeout)"
+
     internal fun resolveUri(path: String, queryParams: Map<String, Any?> = emptyMap()): URI {
         val baseUri = URI.create(url)
         require(!baseUri.scheme.isNullOrBlank() && !baseUri.host.isNullOrBlank()) {
             "RequestConfig.url must include scheme and host, got '$url'"
         }
         val pathUri = URI.create(path)
-        val basePath = baseUri.rawPath.orEmpty().trimEnd('/')
-        val subPath = pathUri.rawPath.orEmpty().let {
-            if (it.isEmpty() || it.startsWith("/")) it else "/$it"
+        require(pathUri.scheme == null && pathUri.rawAuthority == null) {
+            "path must be relative to RequestConfig.url, got '$path'"
         }
-        val combinedPath = "$basePath$subPath"
+        val basePath = baseUri.rawPath.orEmpty()
+        val subPath = pathUri.rawPath.orEmpty()
+        val combinedPath = when {
+            subPath.isEmpty() -> basePath
+            subPath.startsWith("/") -> basePath.trimEnd('/') + subPath
+            else -> basePath.trimEnd('/') + "/" + subPath
+        }
 
         val encodedParams = queryParams.entries
             .flatMap { (key, value) -> queryValuesOf(value).map { key to it } }
@@ -120,7 +135,9 @@ internal fun expandPath(path: String, pathParams: Map<String, Any>): String {
     require(names == pathParams.keys) {
         "Path '$path' has placeholders $names but pathParams has ${pathParams.keys}"
     }
-    return pathPlaceholder.replace(path) { encodePathSegment(pathParams.getValue(it.groupValues[1]).toString()) }
+    val expanded = pathPlaceholder.replace(path) { encodePathSegment(pathParams.getValue(it.groupValues[1]).toString()) }
+    require('{' !in expanded && '}' !in expanded) { "Invalid path template '$path'" }
+    return expanded
 }
 
 fun encodePathSegment(value: String): String =

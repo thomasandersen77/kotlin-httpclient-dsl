@@ -12,8 +12,11 @@ import java.time.Duration
  * is sent. A lambda works for static or always-fresh credentials; [CachedAuthorization]
  * fetches once and refreshes after a 401. A request can replace it with
  * [RequestDsl.authorization] or drop it with [RequestDsl.withoutAuthorization].
+ * @param baseUrl scheme and host, optionally with a port, a path prefix and a query string that
+ * is sent with every request (`https://api.example.com/v1?api-version=2`).
  * @param objectMapper serializes [RequestDsl.json] bodies and deserializes [bodyAs] results for
- * responses from this client. Start from [defaultObjectMapper] to adjust the default.
+ * responses from this client. Each client gets its own copy of the default unless you pass one,
+ * so reconfiguring it never affects another client.
  * @param defaultHeaders sent with every request. A request replaces one by calling
  * [RequestDsl.header] with the same name. `Content-Type` and `Authorization` are rejected.
  * @param requestTimeout the timeout of each request unless the request sets its own.
@@ -22,19 +25,27 @@ class HttpClientDsl(
     val baseUrl: String,
     internal val httpClient: HttpClient,
     internal val authorization: Authorization? = null,
-    val objectMapper: ObjectMapper = dslObjectMapper,
-    val defaultHeaders: Map<String, String> = emptyMap(),
+    val objectMapper: ObjectMapper = defaultObjectMapper(),
+    defaultHeaders: Map<String, String> = emptyMap(),
     val requestTimeout: Duration = Duration.ofSeconds(30),
 ) {
+    /** A copy, so later changes to the map that was passed in cannot slip past the header check. */
+    val defaultHeaders: Map<String, String> = defaultHeaders.toMap()
+
+    private val baseUri: URI = URI.create(baseUrl)
+
     init {
-        defaultHeaders.keys.forEach { requireOrdinaryHeader(it, setWith = "defaultHeaders") }
+        require(!baseUri.scheme.isNullOrBlank() && !baseUri.host.isNullOrBlank()) {
+            "baseUrl must include scheme and host, got '$baseUrl'"
+        }
+        this.defaultHeaders.keys.forEach { requireOrdinaryHeader(it, setWith = "defaultHeaders") }
     }
 
     constructor(
         baseUrl: String,
         connectTimeout: Duration = Duration.ofSeconds(30),
         authorization: Authorization? = null,
-        objectMapper: ObjectMapper = dslObjectMapper,
+        objectMapper: ObjectMapper = defaultObjectMapper(),
         defaultHeaders: Map<String, String> = emptyMap(),
         requestTimeout: Duration = Duration.ofSeconds(30),
     ) : this(
@@ -70,28 +81,40 @@ class HttpClientDsl(
         uriVariables: Array<out Any>,
         configure: RequestDsl.() -> Unit,
     ): HttpResponse<String> {
-        val expandedPath = UriExpander.expand(path, *uriVariables).toString()
-        val uri = URI.create(joinUrl(baseUrl, expandedPath))
+        val uri = joinUrl(baseUri, UriExpander.expand(path, *uriVariables))
         return RequestDsl(method, httpClient, authorization, objectMapper, defaultHeaders, requestTimeout)
             .apply(configure)
             .exchange(uri)
     }
 }
 
-private fun joinUrl(baseUrl: String, expandedPath: String): String {
-    if (expandedPath.isEmpty()) return baseUrl
-    val normalizedBase = baseUrl.trimEnd('/')
-    val normalizedPath = if (expandedPath.startsWith("/") || expandedPath.startsWith("?")) {
-        expandedPath
-    } else {
-        "/$expandedPath"
+/**
+ * Appends [path] to [base] part by part: the paths are joined with exactly one slash, the query
+ * strings are combined, and the fragment of [path] wins. Joining the two as text would put the
+ * path inside the base URL's query or fragment.
+ */
+private fun joinUrl(base: URI, path: URI): URI {
+    val basePath = base.rawPath.orEmpty()
+    val subPath = path.rawPath.orEmpty()
+    val joinedPath = when {
+        subPath.isEmpty() -> basePath
+        subPath.startsWith("/") -> basePath.trimEnd('/') + subPath
+        else -> basePath.trimEnd('/') + "/" + subPath
     }
-    return "$normalizedBase$normalizedPath"
+    val query = listOfNotNull(base.rawQuery, path.rawQuery).filter { it.isNotEmpty() }.joinToString("&")
+    val fragment = path.rawFragment ?: base.rawFragment
+    return URI.create(buildString {
+        append(base.scheme).append("://").append(base.rawAuthority)
+        append(joinedPath)
+        if (query.isNotEmpty()) append('?').append(query)
+        if (fragment != null) append('#').append(fragment)
+    })
 }
 
 /**
  * A response with a status outside `200..299`. [method] and [uri] name the request when the
- * exception comes from [bodyAs]; the message contains them but never the response [body].
+ * exception comes from [bodyAs]. The message names the method, host and path, but never the
+ * query string, the user info or the response [body], so it is safe to log; [uri] has the rest.
  */
 class HttpStatusException @PublishedApi internal constructor(
     val status: Int,
@@ -104,12 +127,23 @@ class HttpStatusException @PublishedApi internal constructor(
     constructor(status: Int, body: String, method: String? = null, uri: URI? = null) :
         this(status, body, method, uri, dslObjectMapper)
 
-    /** Deserializes the error [body] from JSON, for example into the API's error type. */
-    inline fun <reified T> bodyAs(): T = objectMapper.readValue(body)
+    /**
+     * The error [body] as [T], with the same rules as [HttpResponse.bodyAs]: `String` is the raw
+     * text, an empty body is `null` when [T] is nullable, anything else is deserialized from JSON,
+     * for example into the API's error type.
+     */
+    inline fun <reified T> bodyAs(): T = convertBody(body, status, objectMapper)
 }
 
 private fun statusMessage(status: Int, method: String?, uri: URI?): String =
-    if (method == null || uri == null) "HTTP status $status" else "HTTP status $status for $method $uri"
+    if (method == null || uri == null) "HTTP status $status" else "HTTP status $status for $method ${uri.withoutSecrets()}"
+
+private fun URI.withoutSecrets(): String = buildString {
+    if (scheme != null) append(scheme).append("://")
+    if (host != null) append(host)
+    if (port != -1) append(':').append(port)
+    append(rawPath.orEmpty())
+}
 
 /**
  * What [HttpClientDsl] returns: the JDK response, plus the client's `ObjectMapper` so that
@@ -117,9 +151,14 @@ private fun statusMessage(status: Int, method: String?, uri: URI?): String =
  */
 @PublishedApi
 internal class MappedHttpResponse(
-    delegate: HttpResponse<String>,
+    private val delegate: HttpResponse<String>,
     val objectMapper: ObjectMapper,
-) : HttpResponse<String> by delegate
+) : HttpResponse<String> by delegate {
+    // Interface delegation does not cover these three, and the JDK's toString is the useful one.
+    override fun toString(): String = delegate.toString()
+    override fun equals(other: Any?): Boolean = delegate == ((other as? MappedHttpResponse)?.delegate ?: other)
+    override fun hashCode(): Int = delegate.hashCode()
+}
 
 @PublishedApi
 internal fun HttpResponse<String>.objectMapper(): ObjectMapper =
@@ -127,8 +166,9 @@ internal fun HttpResponse<String>.objectMapper(): ObjectMapper =
 
 /**
  * Returns the body of a `2xx` response as [T]: `Unit` ignores the body, `String` returns the raw
- * text unparsed, and any other type is deserialized from JSON. An empty body gives `null` when
- * [T] is nullable. Throws [HttpStatusException] for any status outside `200..299`.
+ * text unparsed (also when it is empty or blank), and any other type is deserialized from JSON.
+ * An empty body gives `null` when [T] is nullable. Throws [HttpStatusException] for any status
+ * outside `200..299`.
  */
 inline fun <reified T> HttpResponse<String>.bodyAs(): T {
     val status = statusCode()
@@ -137,15 +177,20 @@ inline fun <reified T> HttpResponse<String>.bodyAs(): T {
     if (status !in 200..299) {
         throw HttpStatusException(status, content, request().method(), request().uri(), objectMapper)
     }
+    return convertBody(content, status, objectMapper)
+}
+
+@PublishedApi
+internal inline fun <reified T> convertBody(content: String, status: Int, objectMapper: ObjectMapper): T {
     if (T::class == Unit::class) {
         return Unit as T
+    }
+    if (T::class == String::class) {
+        return (if (content.isEmpty() && null is T) null else content) as T
     }
     if (content.isBlank()) {
         if (null is T) return null as T
         throw IllegalStateException("Cannot deserialize empty response body (HTTP $status) to ${T::class.simpleName}")
-    }
-    if (T::class == String::class) {
-        return content as T
     }
     return objectMapper.readValue(content)
 }

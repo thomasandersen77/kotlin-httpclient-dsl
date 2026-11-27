@@ -2,6 +2,7 @@ package io.httpdsl.functions
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertSame
@@ -64,6 +65,50 @@ class RequestConfigTest {
 
         assertFalse(text.contains("s3cret") || text.contains("YWRtaW4"), text)
         assertFalse(bearerText.contains("s3cret"), bearerText)
+
+        val withHeaders = RequestConfig(url = "http://localhost", headers = mapOf("X-Api-Key" to "s3cret-key")).toString()
+        assertFalse(withHeaders.contains("s3cret"), withHeaders)
+        assertTrue(withHeaders.contains("headers=[X-Api-Key]"), withHeaders)
+    }
+
+    @Test
+    fun `each config has its own ObjectMapper, and copy keeps it`() {
+        val first = RequestConfig(url = "http://localhost")
+        val second = RequestConfig(url = "http://localhost")
+
+        first.objectMapper.disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+
+        assertNotSame(first.objectMapper, second.objectMapper)
+        assertTrue(second.objectMapper.isEnabled(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES))
+        assertSame(first.objectMapper, first.copy(url = "http://other").objectMapper)
+    }
+
+    @Test
+    fun `the Content-Type follows the body, and a multipart boundary cannot be replaced by a header`() {
+        val config = RequestConfig(url = "http://localhost", headers = mapOf("Content-Type" to "application/vnd.api+json"))
+        val plain = RequestConfig(url = "http://localhost")
+        fun RequestConfig.contentTypeOf(body: Any?, contentType: String? = null) =
+            buildRequest(method = Method.POST, body = body, path = "/x", contentType = contentType)
+                .headers().allValues("Content-Type")
+
+        assertEquals(listOf("application/octet-stream"), plain.contentTypeOf(byteArrayOf(1, 2)))
+        assertEquals(listOf("application/pdf"), plain.contentTypeOf(byteArrayOf(1, 2), "application/pdf"))
+        assertEquals(listOf("application/json"), plain.contentTypeOf("{}"))
+        assertEquals(listOf("text/plain"), plain.contentTypeOf("hi", "text/plain"))
+        assertEquals(listOf("application/vnd.api+json"), config.contentTypeOf(mapOf("a" to 1)))
+
+        val upload = multipart { field("a", "b") }
+        assertEquals(listOf(upload.contentTypeHeader), config.contentTypeOf(upload))
+    }
+
+    @Test
+    fun `multipart rejects line breaks in anything that becomes a part header`() {
+        assertThrows(IllegalArgumentException::class.java) { multipart { file("doc", "a.pdf\r\nX-Injected: 1", byteArrayOf(1)) } }
+        assertThrows(IllegalArgumentException::class.java) { multipart { file("doc", "a.pdf", byteArrayOf(1), "application/pdf\nX-Evil: 1") } }
+        assertThrows(IllegalArgumentException::class.java) { multipart { field("na\nme", "value") } }
+        assertThrows(IllegalArgumentException::class.java) { MultipartBody(boundary = "b\r\n") }
+        assertThrows(IllegalArgumentException::class.java) { multipart { file("doc", java.nio.file.Path.of("/")) } }
+        multipart { field("note", "line one\nline two") } // a field value is a body, not a header
     }
 
     @Test
@@ -79,6 +124,14 @@ class RequestConfigTest {
         )
 
         assertEquals("http://localhost/ping", RequestConfig(url = "http://localhost").resolveUri("/ping").toString())
+
+        // An empty path leaves the base path alone, trailing slash included.
+        assertEquals("https://api.example.com/v1/", RequestConfig(url = "https://api.example.com/v1/").resolveUri("").toString())
+
+        val absolute = assertThrows(IllegalArgumentException::class.java) {
+            RequestConfig(url = "https://api.example.com").resolveUri("https://other.example.com/v1")
+        }
+        assertEquals("path must be relative to RequestConfig.url, got 'https://other.example.com/v1'", absolute.message)
 
         val missingHostConfig = RequestConfig(url = "/relative")
         assertThrows(IllegalArgumentException::class.java) {
@@ -105,6 +158,10 @@ class RequestConfigTest {
         assertThrows(IllegalArgumentException::class.java) {
             config.buildRequest(method = Method.GET, body = null, path = "/users", pathParams = mapOf("userId" to 1))
         }
+        val unclosed = assertThrows(IllegalArgumentException::class.java) {
+            config.buildRequest(method = Method.GET, body = null, path = "/users/{unclosed")
+        }
+        assertEquals("Invalid path template '/users/{unclosed'", unclosed.message)
     }
 
     @Test

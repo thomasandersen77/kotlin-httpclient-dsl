@@ -21,6 +21,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -42,7 +43,7 @@ class DslTest {
         wiremock.stubFor(post(urlEqualTo("/person"))
             .willReturn(aResponse()
                 .withStatus(200)
-                .withBody("{\"firstame\":\"first\",\"lastname\":\"last\"}")))
+                .withBody("{\"firstname\":\"first\",\"lastname\":\"last\"}")))
 
         val http = HttpClientDsl("http://localhost:${wiremock.port()}")
 
@@ -55,7 +56,7 @@ class DslTest {
 
         wiremock.verify(postRequestedFor(urlEqualTo("/person"))
             .withHeader("Content-Type", equalTo("application/json"))
-            .withRequestBody(equalTo("{\"firstame\":\"first\",\"lastname\":\"last\"}")))
+            .withRequestBody(equalTo("{\"firstname\":\"first\",\"lastname\":\"last\"}")))
     }
 
     @Test
@@ -88,7 +89,7 @@ class DslTest {
 
         val error = assertFailsWith<IllegalStateException> {
             http.get("/get-with-body") {
-                json(PersonDto(firstame = "Bill", lastname = "Anderson"))
+                json(PersonDto(firstname = "Bill", lastname = "Anderson"))
             }
         }
 
@@ -103,13 +104,13 @@ class DslTest {
 
         val http = HttpClientDsl("http://localhost:${wiremock.port()}")
         http.put("/vendor") {
-            json(PersonDto(firstame = "Bill", lastname = "Anderson"))
+            json(PersonDto(firstname = "Bill", lastname = "Anderson"))
             contentType("application/vnd.person+json")
         }
 
         wiremock.verify(putRequestedFor(urlEqualTo("/vendor"))
             .withHeader("Content-Type", equalTo("application/vnd.person+json"))
-            .withRequestBody(equalTo("{\"firstame\":\"Bill\",\"lastname\":\"Anderson\"}")))
+            .withRequestBody(equalTo("{\"firstname\":\"Bill\",\"lastname\":\"Anderson\"}")))
     }
 
     @Test
@@ -119,7 +120,7 @@ class DslTest {
             .withHeader("Authorization", equalTo(authHeaderValue))
             .withHeader("Content-Type", equalTo("application/json"))
             .withRequestBody(
-                equalTo("{\"firstame\":\"Bill\",\"lastname\":\"Anderson\"}")
+                equalTo("{\"firstname\":\"Bill\",\"lastname\":\"Anderson\"}")
             )
             .willReturn(aResponse()
                 .withStatus(200)
@@ -135,7 +136,7 @@ class DslTest {
             requestTimeout = ofSeconds(20)
             authorization { login("user", "pass") }
             header("Accept", "application/json")
-            json(PersonDto(firstame = "Bill", lastname = "Anderson"))
+            json(PersonDto(firstname = "Bill", lastname = "Anderson"))
         }
 
         assertEquals(200, response.statusCode())
@@ -218,7 +219,7 @@ class DslTest {
         assertFailsWith<IllegalStateException> {
             http.get("/never-sent") {
                 authorization { providerCalls++; "Bearer x" }
-                json(PersonDto(firstame = "Bill", lastname = "Anderson"))
+                json(PersonDto(firstname = "Bill", lastname = "Anderson"))
             }
         }
 
@@ -257,7 +258,7 @@ class DslTest {
         )
 
         val response = http.post("/expiring") {
-            json(PersonDto(firstame = "Bill", lastname = "Anderson"))
+            json(PersonDto(firstname = "Bill", lastname = "Anderson"))
         }
 
         assertEquals(201, response.statusCode())
@@ -265,7 +266,7 @@ class DslTest {
         wiremock.verify(1, postRequestedFor(urlEqualTo("/expiring")).withHeader("Authorization", equalTo("Bearer token-1")))
         wiremock.verify(1, postRequestedFor(urlEqualTo("/expiring"))
             .withHeader("Authorization", equalTo("Bearer token-2"))
-            .withRequestBody(equalTo("{\"firstame\":\"Bill\",\"lastname\":\"Anderson\"}")))
+            .withRequestBody(equalTo("{\"firstname\":\"Bill\",\"lastname\":\"Anderson\"}")))
     }
 
     @Test
@@ -387,19 +388,19 @@ class DslTest {
         wiremock.stubFor(patch(urlEqualTo("/persons/42"))
             .willReturn(aResponse()
                 .withStatus(200)
-                .withBody("{\"firstame\":\"Updated\",\"lastname\":\"Anderson\"}")))
+                .withBody("{\"firstname\":\"Updated\",\"lastname\":\"Anderson\"}")))
 
         val http = HttpClientDsl("http://localhost:${wiremock.port()}")
         val updated = http.patch("/persons/{id}", 42) {
             bearerToken("patch-token")
-            json(PersonDto(firstame = "Updated", lastname = "Anderson"))
+            json(PersonDto(firstname = "Updated", lastname = "Anderson"))
         }.bodyAs<PersonDto>()
 
         assertEquals(PersonDto("Updated", "Anderson"), updated)
         wiremock.verify(patchRequestedFor(urlEqualTo("/persons/42"))
             .withHeader("Authorization", equalTo("Bearer patch-token"))
             .withHeader("Content-Type", equalTo("application/json"))
-            .withRequestBody(equalTo("{\"firstame\":\"Updated\",\"lastname\":\"Anderson\"}")))
+            .withRequestBody(equalTo("{\"firstname\":\"Updated\",\"lastname\":\"Anderson\"}")))
     }
 
     @Test
@@ -451,43 +452,38 @@ class DslTest {
     }
 
     @Test
-    internal fun `concurrent 401 responses for stale token do not invalidate newer refreshed token`() {
-        val tokenCalls = AtomicInteger(0)
-        val firstTokenSent = CountDownLatch(2)
-
+    internal fun `two requests rejected with the same stale token share one refresh`() {
+        // The 401 is delayed, so both requests have been sent with token-1 before either is
+        // rejected. The second 401 then arrives for a token that has already been replaced.
         wiremock.stubFor(get(urlEqualTo("/concurrent-resource"))
             .withHeader("Authorization", equalTo("Bearer token-1"))
-            .willReturn(aResponse().withStatus(401)))
+            .willReturn(aResponse().withStatus(401).withFixedDelay(500)))
         wiremock.stubFor(get(urlEqualTo("/concurrent-resource"))
             .withHeader("Authorization", equalTo("Bearer token-2"))
             .willReturn(aResponse().withStatus(200).withBody("ok")))
-
+        val tokenCalls = AtomicInteger(0)
         val http = HttpClientDsl(
             baseUrl = "http://localhost:${wiremock.port()}",
-            authorization = Authorization.cachedBearer {
-                "token-${tokenCalls.incrementAndGet()}"
-            },
+            authorization = Authorization.cachedBearer { "token-${tokenCalls.incrementAndGet()}" },
         )
-
+        val start = CountDownLatch(1)
         val executor = Executors.newFixedThreadPool(2)
         try {
             val futures = (1..2).map {
                 executor.submit<Int> {
-                    val res = http.get("/concurrent-resource") {
-                        // Ensure both requests are built/sent concurrently with token-1 if possible
-                    }
-                    firstTokenSent.countDown()
-                    res.statusCode()
+                    start.await()
+                    http.get("/concurrent-resource").statusCode()
                 }
             }
-            val statuses = futures.map { it.get(5, TimeUnit.SECONDS) }
-            assertEquals(listOf(200, 200), statuses)
+            start.countDown()
+            assertEquals(listOf(200, 200), futures.map { it.get(10, TimeUnit.SECONDS) })
         } finally {
             executor.shutdownNow()
         }
 
-        // Token-1 fetched once initially, then refreshed to token-2 once (at most 2 total fetches).
-        assertTrue(tokenCalls.get() in 1..2, "Expected at most 2 token fetches, got ${tokenCalls.get()}")
+        wiremock.verify(2, getRequestedFor(urlEqualTo("/concurrent-resource")).withHeader("Authorization", equalTo("Bearer token-1")))
+        wiremock.verify(2, getRequestedFor(urlEqualTo("/concurrent-resource")).withHeader("Authorization", equalTo("Bearer token-2")))
+        assertEquals(2, tokenCalls.get(), "token-1 once, then one shared refresh to token-2")
     }
 
     @Test
@@ -533,7 +529,7 @@ class DslTest {
         val contentTypeError = assertFailsWith<IllegalArgumentException> {
             http.post("/duplicate-headers") {
                 header("Content-Type", "text/plain")
-                json(PersonDto(firstame = "Bill", lastname = "Anderson"))
+                json(PersonDto(firstname = "Bill", lastname = "Anderson"))
             }
         }
         assertEquals("Use contentType(...) instead of header(\"Content-Type\", ...)", contentTypeError.message)
@@ -552,14 +548,14 @@ class DslTest {
     @Test
     internal fun `bodyAs String returns the raw body text without parsing it as JSON`() {
         wiremock.stubFor(get(urlEqualTo("/json-object"))
-            .willReturn(okJson("{\"firstame\":\"Bill\"}")))
+            .willReturn(okJson("{\"firstname\":\"Bill\"}")))
         wiremock.stubFor(get(urlEqualTo("/text-error"))
             .willReturn(aResponse().withStatus(503).withBody("down")))
 
         val http = HttpClientDsl("http://localhost:${wiremock.port()}")
 
         assertEquals("pong", http.get("/admin/ping").bodyAs<String>())
-        assertEquals("{\"firstame\":\"Bill\"}", http.get("/json-object").bodyAs<String>())
+        assertEquals("{\"firstname\":\"Bill\"}", http.get("/json-object").bodyAs<String>())
         val error = assertFailsWith<HttpStatusException> { http.get("/text-error").bodyAs<String>() }
         assertEquals(503, error.status)
     }
@@ -587,6 +583,102 @@ class DslTest {
 
         assertEquals("ok", http.get("/told-what-was-rejected").body())
         assertEquals(listOf("Token first"), rejected)
+    }
+
+    @Test
+    internal fun `a base url with a query string or a fragment keeps them in the right place`() {
+        wiremock.stubFor(get(urlEqualTo("/v1/orders?api_key=abc&page=1")).willReturn(aResponse().withStatus(200).withBody("orders")))
+        wiremock.stubFor(get(urlEqualTo("/v1?api_key=abc&b=2")).willReturn(aResponse().withStatus(200).withBody("root")))
+        val http = HttpClientDsl("http://localhost:${wiremock.port()}/v1?api_key=abc")
+
+        assertEquals("orders", http.get("/orders") { queryParam("page", 1) }.body())
+        assertEquals("root", http.get("?b=2").body())
+
+        val withFragment = HttpClientDsl("http://localhost:${wiremock.port()}/v1?api_key=abc#top")
+        assertEquals(
+            "http://localhost:${wiremock.port()}/v1/orders?api_key=abc&page=1#top",
+            withFragment.get("orders") { queryParam("page", 1) }.request().uri().toString(),
+        )
+
+        val error = assertFailsWith<IllegalArgumentException> { HttpClientDsl("/relative") }
+        assertEquals("baseUrl must include scheme and host, got '/relative'", error.message)
+    }
+
+    @Test
+    internal fun `each client has its own ObjectMapper, so reconfiguring one does not change another`() {
+        wiremock.stubFor(get(urlEqualTo("/person-with-extra"))
+            .willReturn(okJson("{\"firstname\":\"Bill\",\"lastname\":\"Anderson\",\"age\":50}")))
+        val tolerant = HttpClientDsl("http://localhost:${wiremock.port()}")
+        val strict = HttpClientDsl("http://localhost:${wiremock.port()}")
+
+        tolerant.objectMapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+
+        assertNotSame(tolerant.objectMapper, strict.objectMapper)
+        assertEquals(PersonDto("Bill", "Anderson"), tolerant.get("/person-with-extra").bodyAs<PersonDto>())
+        assertFailsWith<com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException> {
+            strict.get("/person-with-extra").bodyAs<PersonDto>()
+        }
+    }
+
+    @Test
+    internal fun `an empty or blank text body is returned as it is, and HttpStatusException bodyAs follows the same rules`() {
+        wiremock.stubFor(get(urlEqualTo("/empty-text")).willReturn(aResponse().withStatus(200)))
+        wiremock.stubFor(get(urlEqualTo("/blank-text")).willReturn(aResponse().withStatus(200).withBody("   ")))
+        wiremock.stubFor(get(urlEqualTo("/maintenance")).willReturn(aResponse().withStatus(503).withBody("Down for maintenance")))
+        wiremock.stubFor(get(urlEqualTo("/bad-gateway")).willReturn(aResponse().withStatus(502)))
+        val http = HttpClientDsl("http://localhost:${wiremock.port()}")
+
+        assertEquals("", http.get("/empty-text").bodyAs<String>())
+        assertNull(http.get("/empty-text").bodyAs<String?>())
+        assertEquals("   ", http.get("/blank-text").bodyAs<String>())
+        assertEquals("   ", http.get("/blank-text").bodyAs<String?>())
+
+        val maintenance = assertFailsWith<HttpStatusException> { http.get("/maintenance").bodyAs<PersonDto>() }
+        assertEquals("Down for maintenance", maintenance.bodyAs<String>())
+        val badGateway = assertFailsWith<HttpStatusException> { http.get("/bad-gateway").bodyAs<PersonDto>() }
+        assertNull(badGateway.bodyAs<PersonDto?>())
+        assertFailsWith<IllegalStateException> { badGateway.bodyAs<PersonDto>() }
+    }
+
+    @Test
+    internal fun `delete rejects a body, defaultHeaders reject Content-Type, and a later change to the map is ignored`() {
+        wiremock.stubFor(get(urlEqualTo("/copied-defaults")).willReturn(aResponse().withStatus(200)))
+        val http = HttpClientDsl("http://localhost:${wiremock.port()}")
+
+        val error = assertFailsWith<IllegalStateException> {
+            http.delete("/delete-with-body") { form("a" to "b") }
+        }
+        assertEquals("DELETE requests cannot have a body", error.message)
+        wiremock.verify(0, deleteRequestedFor(urlEqualTo("/delete-with-body")))
+
+        assertFailsWith<IllegalArgumentException> {
+            HttpClientDsl("http://localhost", defaultHeaders = mapOf("content-type" to "text/plain"))
+        }
+
+        val headers = mutableMapOf("X-Tenant" to "acme")
+        val withDefaults = HttpClientDsl("http://localhost:${wiremock.port()}", defaultHeaders = headers)
+        headers["Authorization"] = "Bearer added-later"
+        withDefaults.get("/copied-defaults")
+        wiremock.verify(getRequestedFor(urlEqualTo("/copied-defaults"))
+            .withHeader("X-Tenant", equalTo("acme"))
+            .withoutHeader("Authorization"))
+    }
+
+    @Test
+    internal fun `the response prints like the JDK response, and bearer with a lambda asks for a token per request`() {
+        wiremock.stubFor(get(urlEqualTo("/per-request-token")).willReturn(aResponse().withStatus(200)))
+        var issued = 0
+        val http = HttpClientDsl(
+            baseUrl = "http://localhost:${wiremock.port()}",
+            authorization = Authorization.bearer { "token-${++issued}" },
+        )
+
+        val response = http.get("/per-request-token")
+        http.get("/per-request-token")
+
+        assertEquals("(GET http://localhost:${wiremock.port()}/per-request-token) 200", response.toString())
+        wiremock.verify(1, getRequestedFor(urlEqualTo("/per-request-token")).withHeader("Authorization", equalTo("Bearer token-1")))
+        wiremock.verify(1, getRequestedFor(urlEqualTo("/per-request-token")).withHeader("Authorization", equalTo("Bearer token-2")))
     }
 
     private data class LineDto(val productId: String, val unitPrice: Int)
@@ -653,7 +745,7 @@ class DslTest {
     @Test
     internal fun `bodyAsOrNull returns null for 404 and an empty body and still throws for other errors`() {
         wiremock.stubFor(get(urlEqualTo("/person/1"))
-            .willReturn(okJson("{\"firstame\":\"Bill\",\"lastname\":\"Anderson\"}")))
+            .willReturn(okJson("{\"firstname\":\"Bill\",\"lastname\":\"Anderson\"}")))
         wiremock.stubFor(get(urlEqualTo("/person/2")).willReturn(aResponse().withStatus(404).withBody("no such person")))
         wiremock.stubFor(get(urlEqualTo("/person/3")).willReturn(aResponse().withStatus(204)))
         wiremock.stubFor(get(urlEqualTo("/person/4")).willReturn(aResponse().withStatus(403)))
@@ -685,7 +777,8 @@ class DslTest {
         assertEquals(422, error.status)
         assertEquals("POST", error.method)
         assertEquals("http://localhost:${wiremock.port()}/lines?dryRun=true", error.uri.toString())
-        assertEquals("HTTP status 422 for POST http://localhost:${wiremock.port()}/lines?dryRun=true", error.message)
+        // The query string can carry keys or personal data, so the message leaves it out.
+        assertEquals("HTTP status 422 for POST http://localhost:${wiremock.port()}/lines", error.message)
         assertEquals(LineDto("p-1", -1), error.bodyAs<LineDto>())
         assertEquals("HTTP status 500", HttpStatusException(500, "boom").message)
     }

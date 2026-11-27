@@ -489,6 +489,41 @@ internal class FooHttpClientTest {
     }
 
     @Test
+    internal fun `a failed download leaves an existing file untouched and no partial file behind`(@TempDir tempDir: Path) {
+        wiremock.stubFor(get(urlEqualTo("/api/missing.pdf"))
+            .willReturn(aResponse().withStatus(404).withBody("{\"error\":\"not found\"}")))
+        val existing = tempDir.resolve("report.pdf")
+        Files.writeString(existing, "the previous download")
+        val config = RequestConfig(url = "http://localhost:${wiremock.port()}")
+
+        val error = assertThrows(HttpClientException::class.java) { config.downloadFile("/api/missing.pdf", existing) }
+
+        assertEquals(404, error.status)
+        assertEquals("{\"error\":\"not found\"}", error.body)
+        assertEquals("the previous download", Files.readString(existing))
+        assertEquals(listOf("report.pdf"), tempDir.toFile().list()!!.toList())
+        assertThrows(HttpClientException::class.java) { config.downloadFile("/api/missing.pdf", tempDir.resolve("new.pdf")) }
+        assertFalse(Files.exists(tempDir.resolve("new.pdf")))
+    }
+
+    @Test
+    internal fun `binary requests accept any media type, and an empty body is null or empty by the asked type`(@TempDir tempDir: Path) {
+        wiremock.stubFor(get(urlEqualTo("/api/avatar")).willReturn(aResponse().withStatus(200).withBody(byteArrayOf(1, 2))))
+        wiremock.stubFor(get(urlEqualTo("/api/no-avatar")).willReturn(aResponse().withStatus(204)))
+        wiremock.stubFor(get(urlEqualTo("/api/empty-text")).willReturn(aResponse().withStatus(200)))
+        val config = RequestConfig(url = "http://localhost:${wiremock.port()}")
+
+        assertArrayEquals(byteArrayOf(1, 2), config.get<ByteArray>("/api/avatar"))
+        config.downloadFile("/api/avatar", tempDir.resolve("avatar.bin"))
+        wiremock.verify(2, getRequestedFor(urlEqualTo("/api/avatar")).withHeader("Accept", equalTo("*/*")))
+
+        assertNull(config.getOrNull<ByteArray>("/api/no-avatar"))
+        assertArrayEquals(ByteArray(0), config.get<ByteArray>("/api/no-avatar"))
+        assertEquals("", config.get<String>("/api/empty-text"))
+        assertNull(config.get<String?>("/api/empty-text"))
+    }
+
+    @Test
     internal fun `an Iterable or array in queryParams repeats the parameter`() {
         wiremock.stubFor(get(urlEqualTo("/api/foos?id=1&id=2&tag=a%20b&page=0"))
             .willReturn(aResponse().withStatus(200).withBody("[{\"name\":\"first\"}]")))

@@ -1,7 +1,7 @@
 # kotlin-httpclient-dsl — Agent guide
 
 Repository facts below were checked against the source and Maven configuration on
-2026-10-23. Read this file before working here. This repository is independent of
+2026-11-27. Read this file before working here. This repository is independent of
 other projects in the parent directory; do not carry their architecture or tooling
 requirements into this one.
 
@@ -27,10 +27,7 @@ The root Maven reactor contains **two** modules:
 | `kotlin-httpclient-dsl` | Receiver-lambda DSL for requests, headers and JSON/raw bodies | `io.httpdsl` |
 | `kotlin-httpclient-functions` | Function-based HTTP helpers on `RequestConfig` | `io.httpdsl.functions` |
 
-`kotlin-func-test` is a separate experimental directory with its own POM. It is
-**not** listed in the root reactor and is not covered by a root build. It contains
-test-description helpers and Norwegian domain examples, not the HTTP DSL's tests.
-Do not add it to the reactor as incidental cleanup.
+Each module is meant to be used as one dependency. They must stay independent of each other.
 
 ## Request paths through the code
 
@@ -59,7 +56,7 @@ Do not add it to the reactor as incidental cleanup.
 - The default `ObjectMapper` is the shared `dslObjectMapper` (Kotlin module and Java time
   registered). `defaultObjectMapper()` returns a copy of it for callers to adjust; never
   reconfigure the shared instance.
-- GET and DELETE reject a body (`json` or `body`) with `IllegalStateException` before sending;
+- GET and DELETE reject a body (`json`, `form` or `body`) with `IllegalStateException` before sending;
   POST, PUT and PATCH allow a body.
 - `Authorization` is a `fun interface` (`Authorization.kt`): `headerValue()` returns the
   full header value and is called in `exchange`, once per sent request, never when the
@@ -80,15 +77,23 @@ Do not add it to the reactor as incidental cleanup.
   JSON with the `bodyAs<T>()` extension. The object actually returned is the internal
   `MappedHttpResponse`, which delegates to the JDK response and carries the client's
   `ObjectMapper`; `bodyAs` falls back to `dslObjectMapper` for any other `HttpResponse<String>`.
+  It delegates `toString`, `equals` and `hashCode` explicitly.
+- `HttpClientDsl.objectMapper` defaults to `defaultObjectMapper()`, a fresh copy per client. The
+  shared `dslObjectMapper` must never be reachable through a public property.
+- `baseUrl` is parsed once; `joinUrl` joins it with the expanded path structurally (paths with one
+  slash, queries combined, the path's fragment first). It must include scheme and host.
+- `defaultHeaders` is copied in the constructor.
 - `HttpStatusException` has `status`, `body`, `method` and `uri`. Its message is
-  `HTTP status <n> for <METHOD> <uri>` when thrown by `bodyAs` and `HTTP status <n>` when
-  constructed with only status and body; it never contains the response body.
-  `HttpStatusException.bodyAs<T>()` deserializes the error body with the client's `ObjectMapper`.
+  `HTTP status <n> for <METHOD> <scheme://host[:port]/path>` when thrown by `bodyAs` and
+  `HTTP status <n>` when constructed with only status and body; it never contains the query
+  string, user info or response body. `HttpStatusException.bodyAs<T>()` and
+  `HttpResponse.bodyAs<T>()` share `convertBody`.
 - `bodyAsOrNull<T>()` returns `null` for a `404` and otherwise behaves as `bodyAs<T?>()`.
 - `get/post/put/patch/delete` return the `HttpResponse<String>` for every HTTP status without
   throwing. `bodyAs<T>()` throws `HttpStatusException` when the status is
   outside `200..299`, returns `Unit` when `T` is `Unit`, returns the raw text unparsed when
-  `T` is `String` (as `String.asType` does in the functions module), returns `null` for an empty body
+  `T` is `String` (empty and blank text included; `String?` gives `null` only for an empty body),
+  as `String.asType` does in the functions module, returns `null` for an empty body
   when `T` is nullable, and throws `IllegalStateException` for an empty body when `T` is non-nullable.
 
 ### Functions module
@@ -100,8 +105,11 @@ Do not add it to the reactor as incidental cleanup.
 → `HttpResponse<ByteArray>.bodyAs` → `String.asType` for Jackson deserialization (with `ByteArray`, `String`, `Unit` and nullable support).
 
 - `RequestConfig(url, authorization, headers, requestTimeout, httpClient, objectMapper)`. The port
-  is part of `url`. `defaultHttpClient` is the shared default client. The shared default
-  `mapper` is `internal`; callers get a copy from `defaultObjectMapper()`.
+  is part of `url`. `defaultHttpClient` (shared) and `mapper` are `internal`; `objectMapper`
+  defaults to `defaultObjectMapper()`, a fresh copy per config. `toString()` prints header names
+  only and never the authorization.
+- `resolveUri` rejects a `path` with a scheme or authority and leaves the base path untouched
+  for an empty path.
 - `Authorization` (`Authorization.kt`) is this module's own `fun interface`, deliberately
   not shared with the DSL module: `headerValue()` is called once per sent request, and
   `onUnauthorized(rejectedHeaderValue)` (default `false`) decides whether `send` resends once
@@ -114,8 +122,13 @@ Do not add it to the reactor as incidental cleanup.
   (`IllegalArgumentException` otherwise).
 - A `queryParams` value that is an `Iterable` or an array gives one parameter per non-null element.
 - `exchange<T>(method, path, ...)` returns `HttpResult(status, headers, body)`; `Method` is public.
-- `Accept: application/json` is always set. `Content-Type` is set only when the request has a
-  body (`MultipartBody` supplies its own).
+- `Accept` is `application/json`, or `*/*` for `ByteArray` results and `downloadFile`.
+  `Content-Type` is set only when the request has a body: `contentType` if given, otherwise
+  `application/octet-stream` for a `ByteArray` and `application/json` for the rest. A
+  `MultipartBody` always supplies its own, set last so no header can replace the boundary.
+- `downloadFile` writes to a temp file beside the destination and moves it into place only after
+  a 2xx; the temp file is always removed.
+- `MultipartBody` rejects CR/LF in the boundary, names, filenames and content types.
 - `httpGet/httpGetOrNull/httpPost/httpPut/httpPatch/httpDelete` are `@Deprecated` wrappers around
   the extensions; `FooHttpClientTest` still covers them under `@Suppress("DEPRECATION")`.
 - Statuses `200..299` succeed; `400..499` throw `HttpClientException`; `500..599` throw
@@ -149,8 +162,8 @@ mvn clean verify
 
 The tests are JUnit Jupiter tests executed by Surefire. Both HTTP modules start
 WireMock on dynamic local ports; they require no external API credentials or Docker.
-`DslTest` has 35 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 23,
-`FunctionsUsageExamplesTest` has 10, and `RequestConfigTest` has 8. The two `*UsageExamplesTest`
+`DslTest` has 40 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 25,
+`FunctionsUsageExamplesTest` has 10, and `RequestConfigTest` has 11. The two `*UsageExamplesTest`
 classes are the runnable source of the README's usage examples.
 There is no separate Failsafe integration-test setup.
 
@@ -171,10 +184,6 @@ These are observations, not approval to change unrelated behavior:
   `POST`, `PUT` and `PATCH` requests preserve their HTTP method.
 - Both modules register Jackson's `KotlinModule` and `JavaTimeModule` with
   `WRITE_DATES_AS_TIMESTAMPS` disabled.
-- `kotlin-func-test` includes JVM and JavaScript compiler goals. Its example test
-  checks for chapter-20 information while `Ytelse.kap20Info` always returns an empty
-  list. Treat it as an experiment, not a verified passing suite.
-
 ## Change discipline
 
 Prefer small Kotlin functions and receiver lambdas consistent with the existing
@@ -190,9 +199,9 @@ and do not log real authorization values.
 
 ## CI and configuration caveats
 
-The checked-in workflow runs Qodana, not an explicit Maven test job. Its push
-filter names `main` and `releases/*`, while the cloned default branch is `master`.
-Do not assume every push to `master` runs CI. `qodana.yaml` selects the JVM 2025.1
-linter. `.github/dependabot.yml` is an unfinished configuration with an empty
-ecosystem and an unterminated interval string. Keep CI repairs separate from
+`.github/workflows/maven-test.yml` runs `mvn -B -ntp clean test` on Java 11 and 21 for pushes to
+`master`, `main` and `releases/*` and for pull requests. Local runs are usually on a newer JDK,
+so that workflow is what verifies Java 11: avoid JDK 12+ APIs in tests as well as in main code
+(`Stream.toList()` is a typical slip). The Qodana workflow only triggers on `main` and
+`releases/*`. `.github/dependabot.yml` covers Maven and GitHub Actions weekly. Keep CI repairs separate from
 unrelated library work and verify them before claiming automation works.

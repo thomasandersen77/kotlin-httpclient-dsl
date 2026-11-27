@@ -9,8 +9,8 @@ The aim is that an outgoing call reads like what it does, and that adding the li
 - **Jackson is the only thing it brings along**, besides the Kotlin standard library. There is no
   third-party HTTP client, no logging framework, no annotation processing and no framework integration.
 - **It keeps to itself.** No service loading, no logging binding, no framework hooks, and no shared
-  configuration you can change by accident: each client or config carries its own settings, and
-  `defaultObjectMapper()` hands you a copy.
+  configuration you can change by accident: each client or config carries its own settings,
+  its own `ObjectMapper` included.
 
 | Module | Style | Package |
 | --- | --- | --- |
@@ -47,7 +47,7 @@ Both modules have the same runtime dependencies (`mvn dependency:tree -Dscope=ru
 
 | Dependency | Why |
 | --- | --- |
-| `kotlin-stdlib` | The library is written in Kotlin |
+| `kotlin-stdlib` (with `org.jetbrains:annotations`) | The library is written in Kotlin |
 | `jackson-databind` (with `jackson-core`, `jackson-annotations`) | JSON |
 | `jackson-module-kotlin` (with `kotlin-reflect`) | Kotlin data classes as JSON |
 | `jackson-datatype-jsr310` | `java.time` types as ISO strings |
@@ -73,7 +73,7 @@ val response = http.post("/persons/{id}", 42) {
     bearerToken(login("user", "password"))
     header("Accept", "application/json")
     queryParam("notify", true)
-    json(PersonDto(firstame = "Bill", lastname = "Anderson"))
+    json(PersonDto(firstname = "Bill", lastname = "Anderson"))
 }
 
 val person = response.bodyAs<PersonDto>()
@@ -118,7 +118,9 @@ http.get("/orders/export") {
 }
 ```
 
-`objectMapper` serializes `json(...)` bodies and deserializes `bodyAs` results for that client. `defaultObjectMapper()` returns a fresh copy of the library's default (Kotlin module, Java time, ISO dates), so adjusting it never affects other clients.
+`objectMapper` serializes `json(...)` bodies and deserializes `bodyAs` results for that client. Every client has its own: without the argument it gets a fresh copy of the library's default (Kotlin module, Java time, ISO dates), which is also what `defaultObjectMapper()` returns.
+
+`baseUrl` may carry a path prefix and a query string that is sent with every request: `HttpClientDsl("https://api.example.com/v1?api-version=2").get("/orders")` calls `/v1/orders?api-version=2`.
 
 `json(...)` sets `Content-Type: application/json`, `form("name" to value, ...)` sends an encoded `application/x-www-form-urlencoded` body, and `body(content, contentType)` sets a raw request body; an explicit `contentType(...)` overrides any of these defaults.
 `queryParam` and `form` skip `null`, and repeat the name for each element of an `Iterable` or array (`queryParam("id", listOf(1, 2))` gives `?id=1&id=2`).
@@ -126,9 +128,9 @@ http.get("/orders/export") {
 GET and DELETE requests reject a body with an `IllegalStateException` before anything is sent.
 
 `get`, `post`, `put`, `patch` and `delete` always return `HttpResponse<String>` without throwing on HTTP error statuses.
-Calling `response.bodyAs<T>()` deserializes `2xx` responses, returns the raw text for `bodyAs<String>()`, returns `Unit` for `bodyAs<Unit>()`, returns `null` for an empty body when `T` is nullable, and throws `HttpStatusException` when the status is outside `200..299`.
+Calling `response.bodyAs<T>()` deserializes `2xx` responses, returns the raw text for `bodyAs<String>()` (empty or blank text included), returns `Unit` for `bodyAs<Unit>()`, returns `null` for an empty body when `T` is nullable, and throws `HttpStatusException` when the status is outside `200..299`.
 `response.bodyAsOrNull<T>()` does the same, except that a `404` gives `null`.
-`HttpStatusException` carries `status`, `body`, `method` and `uri`; its message names the request (`HTTP status 422 for POST https://api.example.com/orders`) but never contains the body, and `e.bodyAs<ApiError>()` deserializes the error body with the client's `ObjectMapper`.
+`HttpStatusException` carries `status`, `body`, `method` and `uri`; its message names the request (`HTTP status 422 for POST https://api.example.com/orders`) but never contains the query string or the body, so it is safe to log. `e.bodyAs<ApiError>()` reads the error body with the client's `ObjectMapper`, by the same rules as `response.bodyAs`.
 
 ---
 
@@ -157,7 +159,8 @@ class FooHttpClient(private val config: RequestConfig) {
 - **Authorization:** one `authorization` on the config, asked for the header value on every request. `Authorization.basic(user, password)` and `Authorization.bearer(token)` are static, `Authorization.bearer { token() }` asks for a token each time, and `Authorization.cachedBearer { fetchToken() }` fetches once and, after a `401`, fetches again and resends the request once. Any other scheme is a lambda: `authorization = { "ApiKey $key" }`. An `Authorization` entry in `headers` takes its place.
 - **Path placeholders:** `{name}` in a path is replaced with the URL-encoded value from `pathParams`. A placeholder without a value, or a value without a placeholder, is an `IllegalArgumentException`.
 - **Status and headers:** `config.exchange<T>(Method.POST, path, body)` returns `HttpResult(status, headers, body)`; `result.header("Location")` reads a response header.
-- **Headers sent:** `Accept: application/json` always, `Content-Type` only when the request has a body.
+- **Headers sent:** `Accept: application/json` (`*/*` for `ByteArray` results and `downloadFile`), and `Content-Type` only when the request has a body: `application/octet-stream` for a `ByteArray`, the multipart type for `multipart { }`, otherwise `application/json` unless you pass `contentType`.
+- **Downloads:** `downloadFile` writes to the destination only after a `2xx`; a failed download leaves an existing file as it was.
 - The top-level `httpGet`, `httpPost`, ... helpers are deprecated in favour of the extension functions.
 
 - **Raw text, binary, and multipart uploads:** Pass `contentType = "text/plain"` or `"application/x-www-form-urlencoded"` for raw `String` bodies, `ByteArray` for binary payloads/downloads (`config.get<ByteArray>(...)` / `config.downloadFile(path, destination)`), or `multipart { field(...); file(...) }` for `multipart/form-data`.
@@ -189,7 +192,7 @@ class OrderClient(private val http: HttpClientDsl) {
 
     fun create(order: NewOrderDto): URI {
         val response = http.post("/orders") { json(order) }
-        if (response.statusCode() != 201) throw HttpStatusException(response.statusCode(), response.body())
+        response.bodyAs<Unit>()                                     // throws HttpStatusException unless 2xx
         return URI.create(response.headers().firstValue("Location").orElseThrow())
     }
 
@@ -227,7 +230,7 @@ http.get("/health").bodyAs<String>()             // "UP", unparsed; throws HttpS
 try {
     http.post("/orders") { json(order) }.bodyAs<OrderDto>()
 } catch (e: HttpStatusException) {
-    val error = e.bodyAs<ApiErrorDto>()          // e.message: "HTTP status 422 for POST https://.../orders"
+    val error = e.bodyAs<ApiErrorDto>()          // e.message: "HTTP status 422 for POST https://api.example.com/orders"
 }
 
 // ... or branch on the status before deserializing, with the client's ObjectMapper
@@ -235,7 +238,7 @@ val response = http.post("/orders") { json(order) }
 when (response.statusCode()) {
     201 -> response.bodyAs<OrderDto>()
     422 -> http.objectMapper.readValue<ApiErrorDto>(response.body())
-    else -> throw HttpStatusException(response.statusCode(), response.body())
+    else -> response.bodyAs<Unit>()              // throws HttpStatusException, naming the request
 }
 ```
 
@@ -357,16 +360,21 @@ A list (or array) in `queryParams` repeats the parameter:
 
 ## 4. Good to know
 
-Current behaviour that is easy to trip over:
+Behaviour that is easy to trip over:
 
 **DSL module**
 - `bodyAs` fails on unknown JSON fields unless the DTO has `@JsonIgnoreProperties(ignoreUnknown = true)` or the client has an `ObjectMapper` that ignores them.
 - No `Accept` header is sent unless you set one, with `defaultHeaders` or `header(...)`.
-- `HttpStatusException.message` contains the full request URI, query string included. Do not put secrets in query parameters if the message is logged.
 - `bodyAs` uses the client's `ObjectMapper` only for responses returned by `HttpClientDsl`; for any other `HttpResponse<String>` it uses the default.
+- There is no multipart upload or file download in this module; the functions module has both.
 
 **Functions module**
-- `RequestConfig.toString()` does not reveal `authorization`, but prints `headers` as they are. Keep secrets out of `headers`, or do not log the config.
-- `RequestConfig` no longer has `port`, `username`, `password`, `bearerToken` or `tokenProvider`: put the port in `url` and use `authorization`.
+- `Accept: application/json` is sent unless you ask for a `ByteArray` or use `downloadFile`, which send `Accept: */*`. Override it in `headers`.
+- A `String` body is sent as `application/json` unless you pass `contentType`.
 - `Authorization.bearer { ... }` and a plain lambda never retry; only `cachedBearer` (or your own `onUnauthorized`) resends after a `401`.
-- `defaultHttpClient` is one shared `HttpClient` used by every `RequestConfig` that does not set its own.
+- The default `HttpClient` is shared between configs. Do not `close()` `config.httpClient` unless you passed that client in yourself.
+- There is no `form(...)` helper here; pass an encoded `String` body with `contentType = "application/x-www-form-urlencoded"`.
+
+**Both modules**
+- The token fetch inside `cachedBearer` runs while a lock is held, so concurrent requests wait for one token instead of each fetching one. Do not hand the fetch to another thread that uses the same authorization.
+- The two modules have their own exception types: `HttpStatusException` (DSL) and `HttpException` with `HttpClientException` / `HttpServerException` (functions).

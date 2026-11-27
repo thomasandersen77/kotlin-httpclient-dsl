@@ -53,7 +53,7 @@ class OrderClient(private val http: HttpClientDsl) {
     /** Returns the `Location` of the created order; response headers are on the `HttpResponse`. */
     fun create(order: NewOrderDto): URI {
         val response = http.post("/orders") { json(order) }
-        if (response.statusCode() != 201) throw HttpStatusException(response.statusCode(), response.body())
+        response.bodyAs<Unit>()   // throws HttpStatusException, naming the request, unless 2xx
         return URI.create(response.headers().firstValue("Location").orElseThrow())
     }
 

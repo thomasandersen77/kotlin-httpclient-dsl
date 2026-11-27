@@ -99,13 +99,14 @@ class RequestDsl internal constructor(
 
     /** Sets a raw request body and default `Content-Type` (unless overridden by [contentType]). */
     fun body(content: String, contentType: String) {
-        check(method.allowsBody) { "${method.name} requests cannot have a body" }
+        checkBodyAllowed()
         body = content
         defaultContentType = contentType
     }
 
     /** Serializes [value] with the client's `ObjectMapper` and sets `Content-Type: application/json`. */
     fun json(value: Any) {
+        checkBodyAllowed() // before serializing, so a GET fails for the right reason
         body(objectMapper.writeValueAsString(value), "application/json")
     }
 
@@ -118,6 +119,10 @@ class RequestDsl internal constructor(
             .flatMap { (name, value) -> valuesOf(value).map { name to it } }
             .joinToString("&") { (name, value) -> "${formEncode(name)}=${formEncode(value)}" }
         body(encoded, "application/x-www-form-urlencoded")
+    }
+
+    private fun checkBodyAllowed() {
+        check(method.allowsBody) { "${method.name} requests cannot have a body" }
     }
 
     internal fun exchange(uri: URI): HttpResponse<String> {

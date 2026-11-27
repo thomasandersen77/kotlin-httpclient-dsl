@@ -11,7 +11,9 @@ import java.net.http.HttpHeaders
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 
 enum class Method {
     GET,
@@ -35,6 +37,10 @@ data class HttpResult<T>(
     Idiomatic extension functions on RequestConfig.
 
     `path` may contain `{name}` placeholders; their URL-encoded values come from `pathParams`.
+
+    `contentType` defaults to the body: `application/octet-stream` for a ByteArray, the multipart
+    type with its boundary for a MultipartBody, and `application/json` for everything else,
+    a String included.
 */
 inline fun <reified T> RequestConfig.get(
     path: String,
@@ -59,7 +65,7 @@ inline fun <reified T> RequestConfig.post(
     body: Any? = null,
     queryParams: Map<String, Any?> = emptyMap(),
     headers: Map<String, String> = emptyMap(),
-    contentType: String = "application/json",
+    contentType: String? = null,
     pathParams: Map<String, Any> = emptyMap(),
 ): T = exchange<T>(POST, path, body, queryParams, headers, contentType, pathParams).body
 
@@ -68,7 +74,7 @@ inline fun <reified T> RequestConfig.put(
     body: Any? = null,
     queryParams: Map<String, Any?> = emptyMap(),
     headers: Map<String, String> = emptyMap(),
-    contentType: String = "application/json",
+    contentType: String? = null,
     pathParams: Map<String, Any> = emptyMap(),
 ): T = exchange<T>(PUT, path, body, queryParams, headers, contentType, pathParams).body
 
@@ -77,7 +83,7 @@ inline fun <reified T> RequestConfig.patch(
     body: Any? = null,
     queryParams: Map<String, Any?> = emptyMap(),
     headers: Map<String, String> = emptyMap(),
-    contentType: String = "application/json",
+    contentType: String? = null,
     pathParams: Map<String, Any> = emptyMap(),
 ): T = exchange<T>(PATCH, path, body, queryParams, headers, contentType, pathParams).body
 
@@ -99,10 +105,11 @@ inline fun <reified T> RequestConfig.exchange(
     body: Any? = null,
     queryParams: Map<String, Any?> = emptyMap(),
     headers: Map<String, String> = emptyMap(),
-    contentType: String = "application/json",
+    contentType: String? = null,
     pathParams: Map<String, Any> = emptyMap(),
 ): HttpResult<T> {
-    val response = send(method, body, path, queryParams, headers, contentType, pathParams)
+    val accept = if (T::class == ByteArray::class) "*/*" else "application/json"
+    val response = send(method, body, path, queryParams, headers, contentType, pathParams, accept)
     return HttpResult(response.statusCode(), response.headers(), response.bodyAs(objectMapper))
 }
 
@@ -113,16 +120,23 @@ fun RequestConfig.downloadFile(
     headers: Map<String, String> = emptyMap(),
     pathParams: Map<String, Any> = emptyMap(),
 ): Path {
-    val response = send(
-        GET, body = null, path, queryParams, headers, contentType = "application/json", pathParams,
-        HttpResponse.BodyHandlers.ofFile(destination),
-    )
-    val status = response.statusCode()
-    if (status !in 200..299) {
-        val errorBody = runCatching { java.nio.file.Files.readString(destination, StandardCharsets.UTF_8) }.getOrDefault("")
-        throw statusException(status, errorBody)
+    // Download next to the destination and move it into place only after a 2xx, so an error
+    // response never replaces an existing file or is left behind as the "downloaded" file.
+    val target = destination.toAbsolutePath()
+    val partial = Files.createTempFile(target.parent, "${target.fileName}.", ".part")
+    try {
+        val response = send(
+            GET, body = null, path, queryParams, headers, contentType = null, pathParams, accept = "*/*",
+            HttpResponse.BodyHandlers.ofFile(partial),
+        )
+        val status = response.statusCode()
+        if (status !in 200..299) {
+            throw statusException(status, runCatching { Files.readString(partial, StandardCharsets.UTF_8) }.getOrDefault(""))
+        }
+        return Files.move(partial, destination, StandardCopyOption.REPLACE_EXISTING)
+    } finally {
+        Files.deleteIfExists(partial)
     }
-    return response.body()
 }
 
 /*
@@ -201,35 +215,35 @@ internal fun RequestConfig.buildRequest(
     path: String,
     queryParams: Map<String, Any?> = emptyMap(),
     headers: Map<String, String> = emptyMap(),
-    contentType: String = "application/json",
+    contentType: String? = null,
     pathParams: Map<String, Any> = emptyMap(),
+    accept: String = "application/json",
 ): HttpRequest {
-    var effectiveContentType: String? = contentType
-    val bodyPublisher = when (method) {
+    // The publisher and the Content-Type that describes it; null when the request has no body.
+    val content: Pair<HttpRequest.BodyPublisher, String>? = when (method) {
         GET, DELETE -> null
         POST, PUT, PATCH -> when (body) {
             null -> null
-            is MultipartBody -> {
-                effectiveContentType = body.contentTypeHeader
-                HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())
-            }
-            is ByteArray -> HttpRequest.BodyPublishers.ofByteArray(body)
-            is String -> HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)
-            else -> HttpRequest.BodyPublishers.ofString(body.asJson(objectMapper), StandardCharsets.UTF_8)
+            is MultipartBody -> HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()) to body.contentTypeHeader
+            is ByteArray -> HttpRequest.BodyPublishers.ofByteArray(body) to (contentType ?: "application/octet-stream")
+            is String -> HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8) to (contentType ?: "application/json")
+            else -> HttpRequest.BodyPublishers.ofString(body.asJson(objectMapper), StandardCharsets.UTF_8) to
+                (contentType ?: "application/json")
         }
     }
 
     val builder = HttpRequest
         .newBuilder(resolveUri(expandPath(path, pathParams), queryParams))
         .timeout(requestTimeout)
-        .method(method.name, bodyPublisher ?: HttpRequest.BodyPublishers.noBody())
-        .setHeader("Accept", "application/json")
+        .method(method.name, content?.first ?: HttpRequest.BodyPublishers.noBody())
+        .setHeader("Accept", accept)
 
-    // A request without a body has no content to describe.
-    if (bodyPublisher != null && effectiveContentType != null) builder.setHeader("Content-Type", effectiveContentType)
+    if (content != null) builder.setHeader("Content-Type", content.second)
     if (!hasAuthorizationHeader(headers)) authorization?.let { builder.setHeader("Authorization", it.headerValue()) }
     this.headers.forEach { (name, value) -> builder.setHeader(name, value) }
     headers.forEach { (name, value) -> builder.setHeader(name, value) }
+    // A multipart body is unreadable without its own boundary, so no header may replace this one.
+    if (content != null && body is MultipartBody) builder.setHeader("Content-Type", body.contentTypeHeader)
 
     return builder.build()
 }
@@ -249,10 +263,11 @@ internal fun RequestConfig.send(
     path: String,
     queryParams: Map<String, Any?>,
     headers: Map<String, String>,
-    contentType: String,
+    contentType: String?,
     pathParams: Map<String, Any>,
+    accept: String,
 ): HttpResponse<ByteArray> =
-    send(method, body, path, queryParams, headers, contentType, pathParams, HttpResponse.BodyHandlers.ofByteArray())
+    send(method, body, path, queryParams, headers, contentType, pathParams, accept, HttpResponse.BodyHandlers.ofByteArray())
 
 internal fun <B> RequestConfig.send(
     method: Method,
@@ -260,12 +275,13 @@ internal fun <B> RequestConfig.send(
     path: String,
     queryParams: Map<String, Any?>,
     headers: Map<String, String>,
-    contentType: String,
+    contentType: String?,
     pathParams: Map<String, Any>,
+    accept: String,
     bodyHandler: HttpResponse.BodyHandler<B>,
 ): HttpResponse<B> {
     fun attempt(): Pair<HttpRequest, HttpResponse<B>> {
-        val request = buildRequest(method, body, path, queryParams, headers, contentType, pathParams)
+        val request = buildRequest(method, body, path, queryParams, headers, contentType, pathParams, accept)
         return request to httpClient.send(request, bodyHandler)
     }
 
@@ -283,7 +299,7 @@ internal inline fun <reified T> HttpResponse<ByteArray>.bodyAs(objectMapper: Obj
         throw statusException(status, String(body(), StandardCharsets.UTF_8))
     }
     if (T::class == ByteArray::class) {
-        return body() as T
+        return (if (body().isEmpty() && null is T) null else body()) as T
     }
     return String(body(), StandardCharsets.UTF_8).asType(objectMapper)
 }
@@ -303,12 +319,12 @@ internal inline fun <reified T> String.asType(objectMapper: ObjectMapper = mappe
     if (T::class == Unit::class) {
         return Unit as T
     }
+    if (T::class == String::class) {
+        return (if (this.isEmpty() && null is T) null else this) as T
+    }
     if (this.isBlank()) {
         if (null is T) return null as T
         throw IllegalStateException("Cannot deserialize empty response body to ${T::class.simpleName}")
-    }
-    if (T::class == String::class) {
-        return this as T
     }
     return objectMapper.readValue(this)
 }

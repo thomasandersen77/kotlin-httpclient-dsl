@@ -37,6 +37,10 @@ fun interface Authorization {
             return Authorization { header }
         }
 
+        /** Asks [tokenProvider] for a bare token before every request. Never retries. */
+        fun bearer(tokenProvider: () -> String): Authorization =
+            Authorization { "Bearer ${tokenProvider()}" }
+
         /** Fetches a bare Bearer token once, caches `Bearer <token>`, and refreshes once on HTTP 401. */
         fun cachedBearer(fetchToken: () -> String): Authorization =
             CachedAuthorization { "Bearer ${fetchToken()}" }
@@ -50,6 +54,10 @@ fun interface Authorization {
  *
  * Fetch the token with a client that has no authorization, or with
  * [RequestDsl.withoutAuthorization], otherwise the token request would try to authorize itself.
+ *
+ * The lock is held while [fetch] runs, so other requests wait for the token instead of each
+ * fetching one. [fetch] must therefore not hand the work to another thread that uses this same
+ * authorization: that thread would wait for the lock forever.
  */
 class CachedAuthorization(private val fetch: () -> String) : Authorization {
 
