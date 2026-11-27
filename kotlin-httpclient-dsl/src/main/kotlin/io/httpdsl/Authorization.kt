@@ -16,17 +16,12 @@ fun interface Authorization {
     fun headerValue(): String
 
     /**
-     * Called when the server answers 401. Return `true` to resend the request once with a
-     * fresh [headerValue]. The default never retries, which is right for static credentials.
+     * Called when the server answers 401 to a request that carried [rejectedHeaderValue].
+     * Return `true` to resend the request once with a fresh [headerValue]. The default never
+     * retries, which is right for static credentials. A cache can compare [rejectedHeaderValue]
+     * with what it holds, so a late 401 for an old token does not discard a newer one.
      */
-    fun onUnauthorized(): Boolean = false
-
-    /**
-     * Variant of [onUnauthorized] that receives the `Authorization` header value that was
-     * rejected with 401, allowing caches to avoid invalidating a newer token already
-     * refreshed by a concurrent request.
-     */
-    fun onUnauthorized(rejectedHeaderValue: String): Boolean = onUnauthorized()
+    fun onUnauthorized(rejectedHeaderValue: String): Boolean = false
 
     companion object {
         /** Static HTTP Basic authentication (`Basic <base64(username:password)>`). */
@@ -73,12 +68,6 @@ class CachedAuthorization(private val fetch: () -> String) : Authorization {
         } finally {
             fetching = false
         }
-    }
-
-    @Synchronized
-    override fun onUnauthorized(): Boolean {
-        cached = null
-        return true
     }
 
     @Synchronized

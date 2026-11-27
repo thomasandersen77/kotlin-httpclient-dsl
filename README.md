@@ -121,7 +121,7 @@ http.get("/orders/export") {
 `objectMapper` serializes `json(...)` bodies and deserializes `bodyAs` results for that client. `defaultObjectMapper()` returns a fresh copy of the library's default (Kotlin module, Java time, ISO dates), so adjusting it never affects other clients.
 
 `json(...)` sets `Content-Type: application/json`, `form("name" to value, ...)` sends an encoded `application/x-www-form-urlencoded` body, and `body(content, contentType)` sets a raw request body; an explicit `contentType(...)` overrides any of these defaults.
-`queryParam` and `form` skip `null`, and repeat the name for each element of an `Iterable` or `Array` (`queryParam("id", listOf(1, 2))` gives `?id=1&id=2`).
+`queryParam` and `form` skip `null`, and repeat the name for each element of an `Iterable` or array (`queryParam("id", listOf(1, 2))` gives `?id=1&id=2`).
 `header(...)` and `defaultHeaders` reject `Content-Type` and `Authorization` with an `IllegalArgumentException`, so a request never carries two values; use `contentType(...)` and `authorization { }`, `bearerToken(...)` or `basicAuth(...)`.
 GET and DELETE requests reject a body with an `IllegalStateException` before anything is sent.
 
@@ -279,7 +279,7 @@ class ExpiringTokenAuthorization(
     }
 
     @Synchronized
-    override fun onUnauthorized(): Boolean {      // also refresh, and resend once, after a 401
+    override fun onUnauthorized(rejectedHeaderValue: String): Boolean {      // also refresh, and resend once, after a 401
         current = null
         return true
     }
@@ -350,8 +350,8 @@ val authenticated = base.copy(
 )
 ```
 
-`queryParams` is a `Map`, so a repeated parameter goes in the path:
-`config.get<Page<Customer>>("/customers?id=c-1&id=c-2", queryParams = mapOf("size" to 2))`.
+A list (or array) in `queryParams` repeats the parameter:
+`config.get<Page<Customer>>("/customers", queryParams = mapOf("id" to listOf("c-1", "c-2"), "size" to 2))` calls `/customers?id=c-1&id=c-2&size=2`.
 
 ---
 
@@ -362,7 +362,6 @@ Current behaviour that is easy to trip over:
 **DSL module**
 - `bodyAs` fails on unknown JSON fields unless the DTO has `@JsonIgnoreProperties(ignoreUnknown = true)` or the client has an `ObjectMapper` that ignores them.
 - No `Accept` header is sent unless you set one, with `defaultHeaders` or `header(...)`.
-- `queryParam` and `form` expand an `Iterable` or `Array`, but not primitive arrays such as `IntArray`. Pass a `List`.
 - `HttpStatusException.message` contains the full request URI, query string included. Do not put secrets in query parameters if the message is logged.
 - `bodyAs` uses the client's `ObjectMapper` only for responses returned by `HttpClientDsl`; for any other `HttpResponse<String>` it uses the default.
 
@@ -370,6 +369,4 @@ Current behaviour that is easy to trip over:
 - `RequestConfig.toString()` does not reveal `authorization`, but prints `headers` as they are. Keep secrets out of `headers`, or do not log the config.
 - `RequestConfig` no longer has `port`, `username`, `password`, `bearerToken` or `tokenProvider`: put the port in `url` and use `authorization`.
 - `Authorization.bearer { ... }` and a plain lambda never retry; only `cachedBearer` (or your own `onUnauthorized`) resends after a `401`.
-- `queryParams` is a `Map`, so a repeated parameter has to be written into the path.
-- `downloadFile` does not resend after a `401`.
 - `defaultHttpClient` is one shared `HttpClient` used by every `RequestConfig` that does not set its own.

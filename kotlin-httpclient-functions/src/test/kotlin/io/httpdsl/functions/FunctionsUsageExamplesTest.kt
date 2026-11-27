@@ -195,13 +195,12 @@ class FunctionsUsageExamplesTest {
     }
 
     @Test
-    fun `multi-value query parameters go in the path, single values in queryParams`() {
+    fun `pass a list in queryParams for a multi-value parameter`() {
         wiremock.stubFor(get(urlEqualTo("/customers?id=c-1&id=c-2&size=2"))
             .willReturn(okJson("""{"items":[],"page":0,"totalPages":0}""")))
 
-        // queryParams is a Map, so a repeated name has to be written into the path.
         val page: Page<Customer> = RequestConfig(url = baseUrl())
-            .get("/customers?id=c-1&id=c-2", queryParams = mapOf("size" to 2))
+            .get("/customers", queryParams = mapOf("id" to listOf("c-1", "c-2"), "size" to 2))
 
         assertEquals(0, page.totalPages)
     }

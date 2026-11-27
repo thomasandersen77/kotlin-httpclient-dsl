@@ -113,8 +113,10 @@ fun RequestConfig.downloadFile(
     headers: Map<String, String> = emptyMap(),
     pathParams: Map<String, Any> = emptyMap(),
 ): Path {
-    val request = buildRequest(GET, body = null, path, queryParams, headers, pathParams = pathParams)
-    val response = httpClient.send(request, HttpResponse.BodyHandlers.ofFile(destination))
+    val response = send(
+        GET, body = null, path, queryParams, headers, contentType = "application/json", pathParams,
+        HttpResponse.BodyHandlers.ofFile(destination),
+    )
     val status = response.statusCode()
     if (status !in 200..299) {
         val errorBody = runCatching { java.nio.file.Files.readString(destination, StandardCharsets.UTF_8) }.getOrDefault("")
@@ -249,10 +251,22 @@ internal fun RequestConfig.send(
     headers: Map<String, String>,
     contentType: String,
     pathParams: Map<String, Any>,
-): HttpResponse<ByteArray> {
-    fun attempt(): Pair<HttpRequest, HttpResponse<ByteArray>> {
+): HttpResponse<ByteArray> =
+    send(method, body, path, queryParams, headers, contentType, pathParams, HttpResponse.BodyHandlers.ofByteArray())
+
+internal fun <B> RequestConfig.send(
+    method: Method,
+    body: Any?,
+    path: String,
+    queryParams: Map<String, Any?>,
+    headers: Map<String, String>,
+    contentType: String,
+    pathParams: Map<String, Any>,
+    bodyHandler: HttpResponse.BodyHandler<B>,
+): HttpResponse<B> {
+    fun attempt(): Pair<HttpRequest, HttpResponse<B>> {
         val request = buildRequest(method, body, path, queryParams, headers, contentType, pathParams)
-        return request to httpClient.send(request, HttpResponse.BodyHandlers.ofByteArray())
+        return request to httpClient.send(request, bodyHandler)
     }
 
     val (request, response) = attempt()

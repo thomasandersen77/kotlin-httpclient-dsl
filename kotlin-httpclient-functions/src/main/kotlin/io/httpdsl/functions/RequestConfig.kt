@@ -79,10 +79,8 @@ data class RequestConfig(
         val combinedPath = "$basePath$subPath"
 
         val encodedParams = queryParams.entries
-            .filter { it.value != null }
-            .joinToString("&") { (key, value) ->
-                "${encodeQueryComponent(key)}=${encodeQueryComponent(value.toString())}"
-            }
+            .flatMap { (key, value) -> queryValuesOf(value).map { key to it } }
+            .joinToString("&") { (key, value) -> "${encodeQueryComponent(key)}=${encodeQueryComponent(value)}" }
         val rawQueries = listOfNotNull(
             baseUri.rawQuery?.takeIf { it.isNotEmpty() },
             pathUri.rawQuery?.takeIf { it.isNotEmpty() },
@@ -95,6 +93,18 @@ data class RequestConfig(
         val portSuffix = if (baseUri.port != -1) ":${baseUri.port}" else ""
         val userInfoPrefix = baseUri.rawUserInfo?.let { "$it@" }.orEmpty()
         return URI.create("${baseUri.scheme}://$userInfoPrefix${baseUri.host}$portSuffix$combinedPath$combinedQuery$fragmentSuffix")
+    }
+}
+
+/** Null is skipped; an `Iterable` or any array gives one value per non-null element (`id=1&id=2`). */
+private fun queryValuesOf(value: Any?): List<String> = when (value) {
+    null -> emptyList()
+    is Iterable<*> -> value.filterNotNull().map { it.toString() }
+    is Array<*> -> value.filterNotNull().map { it.toString() }
+    else -> if (value.javaClass.isArray) {
+        (0 until java.lang.reflect.Array.getLength(value)).map { java.lang.reflect.Array.get(value, it).toString() }
+    } else {
+        listOf(value.toString())
     }
 }
 

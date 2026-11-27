@@ -55,7 +55,7 @@ Do not add it to the reactor as incidental cleanup.
   body and its default `Content-Type`. An explicit `contentType(...)` overrides any of these
   defaults, in either order.
 - `queryParam` and `form` skip `null` and add one entry per element of an `Iterable` or
-  `Array` (`valuesOf`); primitive arrays are not expanded.
+  any array, primitive arrays included (`valuesOf`).
 - The default `ObjectMapper` is the shared `dslObjectMapper` (Kotlin module and Java time
   registered). `defaultObjectMapper()` returns a copy of it for callers to adjust; never
   reconfigure the shared instance.
@@ -63,7 +63,7 @@ Do not add it to the reactor as incidental cleanup.
   POST, PUT and PATCH allow a body.
 - `Authorization` is a `fun interface` (`Authorization.kt`): `headerValue()` returns the
   full header value and is called in `exchange`, once per sent request, never when the
-  request fails before sending. `onUnauthorized()` defaults to `false`; returning `true`
+  request fails before sending. `onUnauthorized(rejectedHeaderValue)` defaults to `false`; returning `true`
   makes `exchange` resend the request exactly once after a 401. `CachedAuthorization`
   caches until a 401 and guards against recursive token fetches. `Authorization.Companion`
   provides `basic(username, password)`, `bearer(token)` and `cachedBearer(fetchToken)`.
@@ -95,6 +95,7 @@ Do not add it to the reactor as incidental cleanup.
 
 `FooHttpClient` (example typed client, in `src/test`)
 → `RequestConfig.get/getOrNull/post/put/patch/delete` (all delegate to `exchange`) or `downloadFile`
+  (same `send`, with a file body handler, so it also resends once after a 401)
 → `RequestConfig.send` (`buildRequest`, `HttpClient.send` with a byte-array body, one resend after a 401)
 → `HttpResponse<ByteArray>.bodyAs` → `String.asType` for Jackson deserialization (with `ByteArray`, `String`, `Unit` and nullable support).
 
@@ -111,6 +112,7 @@ Do not add it to the reactor as incidental cleanup.
 - `path` may contain `{name}` placeholders, filled from `pathParams` by `expandPath` with
   `encodePathSegment`. Placeholder names and `pathParams` keys must match exactly
   (`IllegalArgumentException` otherwise).
+- A `queryParams` value that is an `Iterable` or an array gives one parameter per non-null element.
 - `exchange<T>(method, path, ...)` returns `HttpResult(status, headers, body)`; `Method` is public.
 - `Accept: application/json` is always set. `Content-Type` is set only when the request has a
   body (`MultipartBody` supplies its own).
@@ -147,7 +149,7 @@ mvn clean verify
 
 The tests are JUnit Jupiter tests executed by Surefire. Both HTTP modules start
 WireMock on dynamic local ports; they require no external API credentials or Docker.
-`DslTest` has 34 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 21,
+`DslTest` has 35 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 23,
 `FunctionsUsageExamplesTest` has 10, and `RequestConfigTest` has 8. The two `*UsageExamplesTest`
 classes are the runnable source of the README's usage examples.
 There is no separate Failsafe integration-test setup.

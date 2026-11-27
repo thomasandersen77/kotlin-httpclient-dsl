@@ -469,6 +469,40 @@ internal class FooHttpClientTest {
     }
 
     @Test
+    internal fun `downloadFile fetches a new token after a 401 and downloads the file`(@TempDir tempDir: Path) {
+        wiremock.stubFor(get(urlEqualTo("/api/report.csv"))
+            .withHeader("Authorization", equalTo("Bearer token-1"))
+            .willReturn(aResponse().withStatus(401).withBody("expired")))
+        wiremock.stubFor(get(urlEqualTo("/api/report.csv"))
+            .withHeader("Authorization", equalTo("Bearer token-2"))
+            .willReturn(aResponse().withStatus(200).withBody("id;name")))
+        val fetches = AtomicInteger(0)
+        val config = RequestConfig(
+            url = "http://localhost:${wiremock.port()}",
+            authorization = Authorization.cachedBearer { "token-${fetches.incrementAndGet()}" },
+        )
+
+        val saved = config.downloadFile("/api/{file}", tempDir.resolve("report.csv"), pathParams = mapOf("file" to "report.csv"))
+
+        assertEquals("id;name", Files.readString(saved))
+        assertEquals(2, fetches.get())
+    }
+
+    @Test
+    internal fun `an Iterable or array in queryParams repeats the parameter`() {
+        wiremock.stubFor(get(urlEqualTo("/api/foos?id=1&id=2&tag=a%20b&page=0"))
+            .willReturn(aResponse().withStatus(200).withBody("[{\"name\":\"first\"}]")))
+        val config = RequestConfig(url = "http://localhost:${wiremock.port()}")
+
+        val foos: List<Foo> = config.get(
+            "/api/foos",
+            queryParams = mapOf("id" to listOf(1, null, 2), "tag" to arrayOf("a b"), "none" to emptyList<Int>(), "page" to intArrayOf(0)),
+        )
+
+        assertEquals(listOf(Foo("first")), foos)
+    }
+
+    @Test
     internal fun `static authorization returns the 401 as an exception without resending`() {
         wiremock.stubFor(get(urlEqualTo("/api/rejected")).willReturn(aResponse().withStatus(401)))
         val config = RequestConfig(

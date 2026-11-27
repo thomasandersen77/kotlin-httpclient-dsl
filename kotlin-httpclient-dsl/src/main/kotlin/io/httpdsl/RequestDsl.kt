@@ -63,7 +63,7 @@ class RequestDsl internal constructor(
     }
 
     /**
-     * Appends URL-encoded query parameters to the request URI. An `Iterable` or `Array` adds
+     * Appends URL-encoded query parameters to the request URI. An `Iterable` or any array adds
      * one parameter per element (`id=1&id=2`). Null values and null elements are ignored.
      */
     fun queryParam(name: String, value: Any?) {
@@ -111,7 +111,7 @@ class RequestDsl internal constructor(
 
     /**
      * Sets an `application/x-www-form-urlencoded` body with encoded names and values. Values are
-     * expanded as in [queryParam]: null is skipped, an `Iterable` or `Array` repeats the field.
+     * expanded as in [queryParam]: null is skipped, an `Iterable` or any array repeats the field.
      */
     fun form(vararg fields: Pair<String, Any?>) {
         val encoded = fields
@@ -127,9 +127,8 @@ class RequestDsl internal constructor(
         val response = send(firstRequest)
         val auth = authorization ?: return response
         if (response.statusCode() != 401) return response
-        val sentHeader = firstRequest.headers().firstValue("Authorization").orElse(null)
-        val shouldRetry = if (sentHeader != null) auth.onUnauthorized(sentHeader) else auth.onUnauthorized()
-        if (!shouldRetry) return response
+        val rejected = firstRequest.headers().firstValue("Authorization").orElse(null) ?: return response
+        if (!auth.onUnauthorized(rejected)) return response
 
         return send(buildRequest(targetUri))
     }
@@ -172,8 +171,12 @@ private fun valuesOf(value: Any?): List<String> = when (value) {
     null -> emptyList()
     is Iterable<*> -> value.filterNotNull().map { it.toString() }
     is Array<*> -> value.filterNotNull().map { it.toString() }
-    else -> listOf(value.toString())
+    else -> if (value.javaClass.isArray) primitiveArrayValues(value) else listOf(value.toString())
 }
+
+/** `IntArray`, `LongArray` and the other primitive arrays share no supertype, hence reflection. */
+private fun primitiveArrayValues(array: Any): List<String> =
+    (0 until java.lang.reflect.Array.getLength(array)).map { java.lang.reflect.Array.get(array, it).toString() }
 
 private fun formEncode(value: String): String =
     URLEncoder.encode(value, StandardCharsets.UTF_8)

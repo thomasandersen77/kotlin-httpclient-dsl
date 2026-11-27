@@ -564,6 +564,31 @@ class DslTest {
         assertEquals(503, error.status)
     }
 
+    @Test
+    internal fun `a custom Authorization is told which header value the server rejected`() {
+        wiremock.stubFor(get(urlEqualTo("/told-what-was-rejected"))
+            .withHeader("Authorization", equalTo("Token first"))
+            .willReturn(aResponse().withStatus(401)))
+        wiremock.stubFor(get(urlEqualTo("/told-what-was-rejected"))
+            .withHeader("Authorization", equalTo("Token second"))
+            .willReturn(aResponse().withStatus(200).withBody("ok")))
+        val rejected = mutableListOf<String>()
+        val tokens = listOf("Token first", "Token second").iterator()
+        val http = HttpClientDsl(
+            baseUrl = "http://localhost:${wiremock.port()}",
+            authorization = object : Authorization {
+                override fun headerValue() = tokens.next()
+                override fun onUnauthorized(rejectedHeaderValue: String): Boolean {
+                    rejected += rejectedHeaderValue
+                    return true
+                }
+            },
+        )
+
+        assertEquals("ok", http.get("/told-what-was-rejected").body())
+        assertEquals(listOf("Token first"), rejected)
+    }
+
     private data class LineDto(val productId: String, val unitPrice: Int)
 
     @Test
@@ -675,7 +700,7 @@ class DslTest {
             queryParam("id", listOf(1, null, 2))
             queryParam("tag", arrayOf("a b", "c"))
             queryParam("none", emptyList<String>())
-            queryParam("page", 0)
+            queryParam("page", intArrayOf(0))
         }
 
         assertEquals("ok", response.body())

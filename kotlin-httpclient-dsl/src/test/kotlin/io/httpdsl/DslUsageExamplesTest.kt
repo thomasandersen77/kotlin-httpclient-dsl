@@ -71,8 +71,8 @@ data class IssuedToken(val value: String, val expiresAt: Instant)
 
 /**
  * Example of a custom [Authorization]: refresh the token shortly before it expires, and also
- * after a 401. Overriding the no-argument [onUnauthorized] is enough; the variant that receives
- * the rejected header value delegates to it by default.
+ * after a 401. [onUnauthorized] is told which header value was rejected; this implementation
+ * simply drops whatever it holds.
  */
 class ExpiringTokenAuthorization(
     private val now: () -> Instant,
@@ -89,7 +89,7 @@ class ExpiringTokenAuthorization(
     }
 
     @Synchronized
-    override fun onUnauthorized(): Boolean {
+    override fun onUnauthorized(rejectedHeaderValue: String): Boolean {
         current = null
         return true
     }
