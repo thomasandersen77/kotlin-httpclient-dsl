@@ -3,7 +3,7 @@
 All notable changes to httpkt. Versions follow [semantic versioning](https://semver.org/): a
 patch release (the last number) never changes a public signature.
 
-## 1.1.0 (not released yet)
+## 1.1.0 (2026-11-28)
 
 Additions only. Code written against 1.0.x compiles and runs unchanged.
 

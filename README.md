@@ -60,9 +60,7 @@ Authentication works the same way in both.
 
 ## Installation
 
-Requires **Java 11** or newer. Current version: **`1.0.1`**, available on [Maven Central](https://central.sonatype.com/namespace/io.github.httpkt).
-
-> **This README describes 1.1.0, which is not released yet.** `HttpKt`, `expiringBearer`, `formBody`, `requireSuccess`, `defaultObjectMapper(ignoreUnknownProperties = true)` and `bodyAs` on the functions module's exceptions are new in 1.1.0. On 1.0.1, write `HttpClientDsl` where the examples say `HttpKt`; see the [changelog](CHANGELOG.md).
+Requires **Java 11** or newer. Current version: **`1.1.0`**, available on [Maven Central](https://central.sonatype.com/namespace/io.github.httpkt).
 
 ### Maven
 
@@ -73,7 +71,7 @@ Add **one** of the two modules:
 <dependency>
     <groupId>io.github.httpkt</groupId>
     <artifactId>httpkt-dsl</artifactId>
-    <version>1.0.1</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
@@ -82,7 +80,7 @@ Add **one** of the two modules:
 <dependency>
     <groupId>io.github.httpkt</groupId>
     <artifactId>httpkt-functions</artifactId>
-    <version>1.0.1</version>
+    <version>1.1.0</version>
 </dependency>
 ```
 
@@ -90,8 +88,8 @@ Add **one** of the two modules:
 
 ```kotlin
 // Pick one:
-implementation("io.github.httpkt:httpkt-dsl:1.0.1")
-// implementation("io.github.httpkt:httpkt-functions:1.0.1")
+implementation("io.github.httpkt:httpkt-dsl:1.1.0")
+// implementation("io.github.httpkt:httpkt-functions:1.1.0")
 ```
 
 <details>
