@@ -1,6 +1,7 @@
 package io.github.httpkt.functions
 
 import java.io.ByteArrayOutputStream
+import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -129,3 +130,31 @@ private val boundaryPattern = Regex("[A-Za-z0-9'+_.-]{1,70}")
 fun multipart(block: MultipartBody.() -> Unit): MultipartBody =
     MultipartBody().apply(block)
 
+
+/**
+ * An `application/x-www-form-urlencoded` request body, as OAuth token endpoints expect. Build it
+ * with [formBody] and pass it as the `body` of [post], [put] or [patch].
+ */
+class FormBody internal constructor(internal val encoded: String) {
+    /** The fields are often credentials, so they are left out. */
+    override fun toString(): String = "FormBody(${encoded.length} characters)"
+}
+
+/**
+ * Builds a [FormBody] with URL-encoded names and values. Values follow the same rules as
+ * `queryParams`: null is skipped, and an `Iterable` or an array repeats the field.
+ *
+ * ```
+ * val token: TokenResponse = auth.post("/token", body = formBody(
+ *     "grant_type" to "client_credentials",
+ *     "scope" to "orders:read orders:write",
+ * ))
+ * ```
+ */
+fun formBody(vararg fields: Pair<String, Any?>): FormBody = FormBody(
+    fields
+        .flatMap { (name, value) -> queryValuesOf(value).map { name to it } }
+        .joinToString("&") { (name, value) -> "${formEncode(name)}=${formEncode(value)}" },
+)
+
+private fun formEncode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8)

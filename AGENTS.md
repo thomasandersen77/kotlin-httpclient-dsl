@@ -196,9 +196,14 @@ mvn clean verify
 
 The tests are JUnit Jupiter tests executed by Surefire. Both HTTP modules start
 WireMock on dynamic local ports; they require no external API credentials or Docker.
-`DslTest` has 46 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 30,
-`FunctionsUsageExamplesTest` has 10, and `RequestConfigTest` has 13. The two `*UsageExamplesTest`
-classes are the runnable source of the README's usage examples.
+`DslTest` has 50 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 34,
+`FunctionsUsageExamplesTest` has 10, and `RequestConfigTest` has 13. Each module also has an
+`examples` test package with `ShopExampleTest` (7 in the DSL module, 8 in the functions module)
+and `MaskinportenExampleTest` (2 each): 70 + 67 = 137 tests. The code between the `// README:`
+markers in the `examples` packages is what the README's web shop and Maskinporten sections show,
+and the two `*UsageExamplesTest` classes are the source of its smaller reference examples. When
+one changes, change the other in the same commit. The examples live in their own package so they
+only see the public API, as a user's code does.
 There is no separate Failsafe integration-test setup.
 
 The root POM targets Java 11 with Kotlin `2.1.10` and Jackson `2.18.2`. Keep `failIfNoTests=true`
@@ -231,6 +236,30 @@ status rather than implementation details. Keep tests local and deterministic;
 never call a real HTTP service as part of the normal suite. Use dummy credentials
 and do not log real authorization values.
 
+## Added in 1.1.0
+
+All of it is additive; nothing published in 1.0.x changed signature.
+
+- `HttpKt` is a `typealias` for `HttpClientDsl` and the name used in the README and in new
+  examples. The class keeps its name so 1.0.x callers stay binary compatible; making `HttpKt`
+  the real class name is a 2.0.0 change.
+- `Authorization.expiringBearer(refreshMargin = 30s) { ExpiringToken(...) }` in both modules,
+  implemented by the internal `ExpiringAuthorization` (its `now` parameter is for tests). It
+  fetches again when the token is within the margin of its expiry and after a 401, under the same
+  lock and recursion guard as `CachedAuthorization`. `ExpiringToken.toString()` hides the token.
+- `HttpResponse<String>.requireSuccess()` in the DSL module.
+- `formBody(vararg pairs)` and `FormBody` in the functions module; `buildRequest` gives it
+  `application/x-www-form-urlencoded`. Values follow `queryValuesOf`.
+- `HttpException.bodyAs<T>()` in the functions module. The exception gets the config's mapper
+  through the three-argument `statusException`; the two-argument one must keep its signature,
+  because code compiled against 1.0 has its inline callers built in.
+- `defaultObjectMapper(ignoreUnknownProperties = false)` in both modules, with `@JvmOverloads` so
+  the no-argument JVM method that 1.0 callers use still exists.
+
+Until `scripts/release.sh 1.1.0` has run, the README's Installation section carries a callout that
+it describes the unreleased 1.1.0, and the changelog heading says "(not released yet)". The
+release script removes the callout and dates the heading.
+
 ## Releases
 
 The library is licensed under Apache 2.0 (`LICENSE`). Versions follow semantic versioning: since
@@ -253,7 +282,10 @@ the server id `central` in `~/.m2/settings.xml`. Never create, store or print th
 A release is made with `scripts/release.sh <version>`: it checks that `master` is clean and equal
 to `origin/master`, sets the version in the POMs and in the README's install coordinates, runs
 `mvn -Prelease clean deploy`, commits and tags `v<version>`, moves `master` to the next
-`-SNAPSHOT`, pushes and creates the GitHub release. `scripts/release.sh <version> --dry-run`
+`-SNAPSHOT`, pushes and creates the GitHub release. It requires a `## <version> (not released
+yet)` section in `CHANGELOG.md`, gives it today's date and uses it as the release notes, so write
+the changelog entry in the same commit as the change. A README line starting `> **This README
+describes <version>, which is not released yet.**` is removed. `scripts/release.sh <version> --dry-run`
 builds and tests the same thing without signing, uploading, committing or tagging. The script
 uploads but never publishes: the owner clicks Publish in the Central Portal. An agent may run
 the dry run freely, and the real release only when the owner asked for that version.

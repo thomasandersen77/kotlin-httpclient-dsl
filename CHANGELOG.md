@@ -3,6 +3,32 @@
 All notable changes to httpkt. Versions follow [semantic versioning](https://semver.org/): a
 patch release (the last number) never changes a public signature.
 
+## 1.1.0 (not released yet)
+
+Additions only. Code written against 1.0.x compiles and runs unchanged.
+
+### Added
+
+- **`HttpKt`** is the new name for `HttpClientDsl` in `httpkt-dsl`: `val shop = HttpKt("https://api.shop.example")`.
+  It is a type alias, so both names work and can be mixed.
+- **`Authorization.expiringBearer { ... }`** in both modules, for tokens with a known lifetime such
+  as OAuth access tokens with `expires_in`. The token is fetched again shortly before it expires
+  and after a 401. This is what a Maskinporten or Entra ID integration needs.
+- **`formBody(...)`** in `httpkt-functions`: a URL-encoded form body, as token endpoints expect.
+  `httpkt-dsl` already had `form(...)`.
+- **`requireSuccess()`** in `httpkt-dsl`: throws unless the status is `2xx` and returns the
+  response, so `shop.post("/orders") { json(order) }.requireSuccess().header("Location")` reads in
+  one line.
+- **`bodyAs<T>()` on `HttpException`** in `httpkt-functions`, to read an error body as your own
+  error type. `httpkt-dsl` already had it on `HttpStatusException`.
+- **`defaultObjectMapper(ignoreUnknownProperties = true)`** in both modules, for APIs that may add
+  JSON fields at any time.
+
+### Documentation
+
+- The README is rewritten around one example, a web shop, written once per module, and has a
+  complete Maskinporten example. Every example runs as a test in the `examples` test packages.
+
 ## 1.0.1 (2026-11-28)
 
 No public signature changed, so 1.0.1 is a drop-in replacement for 1.0.0. Four things behave

@@ -963,6 +963,76 @@ class DslTest {
         }
     }
 
+    @Test
+    internal fun `expiringBearer reuses a token until the refresh margin, and fetches again after a 401`() {
+        wiremock.stubFor(get(urlEqualTo("/expiring/orders")).willReturn(aResponse().withStatus(200)))
+        var clock = java.time.Instant.parse("2026-11-28T10:00:00Z")
+        var issued = 0
+        val http = HttpKt(
+            baseUrl = "http://localhost:${wiremock.port()}",
+            authorization = ExpiringAuthorization(refreshMargin = ofSeconds(30), now = { clock }) {
+                ExpiringToken("expiring-${++issued}", expiresAt = clock.plusSeconds(120))
+            },
+        )
+
+        http.get("/expiring/orders")
+        clock = clock.plusSeconds(89)      // 31 s left: still used
+        http.get("/expiring/orders")
+        clock = clock.plusSeconds(1)       // 30 s left: inside the margin, fetched again
+        http.get("/expiring/orders")
+
+        assertEquals(2, issued)
+        wiremock.verify(2, getRequestedFor(urlEqualTo("/expiring/orders")).withHeader("Authorization", equalTo("Bearer expiring-1")))
+        wiremock.verify(1, getRequestedFor(urlEqualTo("/expiring/orders")).withHeader("Authorization", equalTo("Bearer expiring-2")))
+
+        wiremock.stubFor(get(urlEqualTo("/expiring/revoked")).withHeader("Authorization", equalTo("Bearer expiring-2"))
+            .willReturn(aResponse().withStatus(401)))
+        wiremock.stubFor(get(urlEqualTo("/expiring/revoked")).withHeader("Authorization", equalTo("Bearer expiring-3"))
+            .willReturn(aResponse().withStatus(200)))
+
+        assertEquals(200, http.get("/expiring/revoked").statusCode())
+        assertEquals(3, issued)
+    }
+
+    @Test
+    internal fun `expiringBearer rejects a negative margin and ExpiringToken hides the token in toString`() {
+        assertFailsWith<IllegalArgumentException> {
+            Authorization.expiringBearer(refreshMargin = ofSeconds(-1)) { ExpiringToken("t", ofSeconds(60)) }
+        }
+        val token = ExpiringToken("very-secret", expiresIn = ofSeconds(60))
+
+        assertTrue("very-secret" !in token.toString())
+        assertTrue(token.expiresAt.isAfter(java.time.Instant.now().plusSeconds(50)))
+    }
+
+    @Test
+    internal fun `requireSuccess returns a 2xx response and throws HttpStatusException otherwise`() {
+        wiremock.stubFor(post(urlEqualTo("/require/created")).willReturn(aResponse().withStatus(201).withHeader("Location", "/orders/7")))
+        wiremock.stubFor(post(urlEqualTo("/require/failed")).willReturn(aResponse().withStatus(500).withBody("boom")))
+        val http = HttpKt("http://localhost:${wiremock.port()}")
+
+        assertEquals("/orders/7", http.post("/require/created").requireSuccess().header("Location"))
+        val failure = assertFailsWith<HttpStatusException> { http.post("/require/failed").requireSuccess() }
+        assertEquals(500, failure.status)
+        assertEquals("boom", failure.body)
+        assertEquals("POST", failure.method)
+    }
+
+    @Test
+    internal fun `defaultObjectMapper can ignore unknown JSON fields, and fails on them by default`() {
+        wiremock.stubFor(get(urlEqualTo("/tolerant/person")).willReturn(okJson(
+            """{"firstname":"Kari","lastname":"Nordmann","addedLater":true}""",
+        )))
+        val baseUrl = "http://localhost:${wiremock.port()}"
+        val strict = HttpKt(baseUrl)
+        val tolerant = HttpKt(baseUrl, objectMapper = defaultObjectMapper(ignoreUnknownProperties = true))
+
+        assertEquals(PersonDto("Kari", "Nordmann"), tolerant.get("/tolerant/person").bodyAs())
+        assertFailsWith<com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException> {
+            strict.get("/tolerant/person").bodyAs<PersonDto>()
+        }
+    }
+
     companion object {
         private val wiremock = WireMockServer(WireMockConfiguration()
             .dynamicPort()

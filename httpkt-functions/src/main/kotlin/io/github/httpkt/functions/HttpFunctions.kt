@@ -81,10 +81,11 @@ inline fun <reified T : Any> RequestConfig.getOrNull(
  * as for [get].
  *
  * @param body `null` sends no body. A `String` is sent as it is, a `ByteArray` as raw bytes, a
- * [MultipartBody] as `multipart/form-data`, and anything else is serialized to JSON.
+ * [MultipartBody] as `multipart/form-data`, a [FormBody] as a URL-encoded form, and anything else
+ * is serialized to JSON.
  * @param contentType defaults to the body: `application/octet-stream` for a `ByteArray`, the
- * multipart type with its boundary for a [MultipartBody], and `application/json` for everything
- * else, a `String` included.
+ * multipart type with its boundary for a [MultipartBody], `application/x-www-form-urlencoded` for
+ * a [FormBody], and `application/json` for everything else, a `String` included.
  */
 inline fun <reified T> RequestConfig.post(
     path: String,
@@ -179,7 +180,7 @@ fun RequestConfig.downloadFile(
         )
         val status = response.statusCode()
         if (status !in 200..299) {
-            throw statusException(status, readErrorBody(partial, response.responseCharset()))
+            throw statusException(status, readErrorBody(partial, response.responseCharset()), objectMapper)
         }
         Files.move(partial, target, StandardCopyOption.REPLACE_EXISTING)
         return destination
@@ -207,6 +208,7 @@ internal fun RequestConfig.buildRequest(
         POST, PUT, PATCH -> when (body) {
             null -> null
             is MultipartBody -> HttpRequest.BodyPublishers.ofByteArray(body.toByteArray()) to body.contentTypeHeader
+            is FormBody -> HttpRequest.BodyPublishers.ofString(body.encoded, StandardCharsets.UTF_8) to "application/x-www-form-urlencoded"
             is ByteArray -> HttpRequest.BodyPublishers.ofByteArray(body) to "application/octet-stream"
             is String -> HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8) to "application/json"
             else -> HttpRequest.BodyPublishers.ofString(body.asJson(objectMapper), StandardCharsets.UTF_8) to "application/json"
@@ -292,7 +294,7 @@ internal fun <B> RequestConfig.send(
 internal inline fun <reified T> HttpResponse<ByteArray>.bodyAs(objectMapper: ObjectMapper): T {
     val status = statusCode()
     if (status !in 200..299) {
-        throw statusException(status, String(body(), responseCharset()))
+        throw statusException(status, String(body(), responseCharset()), objectMapper)
     }
     if (T::class == ByteArray::class) {
         // Only 204 means "nothing there"; an empty 200 is a real, empty file.
@@ -324,6 +326,11 @@ private fun readErrorBody(file: Path, charset: Charset): String = runCatching {
     }
 }.getOrDefault("")
 
+@PublishedApi
+internal fun statusException(status: Int, body: String, objectMapper: ObjectMapper): HttpException =
+    statusException(status, body).also { it.objectMapper = objectMapper }
+
+// Kept with this signature: code compiled against 1.0 has the inline callers of it built in.
 @PublishedApi
 internal fun statusException(status: Int, body: String): HttpException = when (status) {
     in 400..499 -> HttpClientException(status, body)

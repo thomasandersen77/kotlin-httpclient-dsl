@@ -121,6 +121,17 @@ class HttpClientDsl(
     }
 }
 
+/**
+ * The name to use for [HttpClientDsl] in new code: a client for one HTTP API.
+ *
+ * ```
+ * val shop = HttpKt("https://api.shop.example")
+ * ```
+ *
+ * It is the same class, so the two names can be mixed freely.
+ */
+typealias HttpKt = HttpClientDsl
+
 private val absoluteUrl = Regex("^(([A-Za-z][A-Za-z0-9+.-]*:)?//|https?:)", RegexOption.IGNORE_CASE)
 
 /**
@@ -236,6 +247,19 @@ internal inline fun <reified T> convertBody(content: String, status: Int, object
         throw IllegalStateException("Cannot deserialize empty response body (HTTP $status) to ${T::class.simpleName}")
     }
     return objectMapper.readValue(content)
+}
+
+/**
+ * Returns this response when its status is `200..299` and throws [HttpStatusException] otherwise,
+ * for when the body does not matter or you want something else from the response:
+ *
+ * ```
+ * val location = shop.post("/orders") { json(order) }.requireSuccess().header("Location")
+ * ```
+ */
+fun HttpResponse<String>.requireSuccess(): HttpResponse<String> {
+    if (statusCode() !in 200..299) throw toStatusException()
+    return this
 }
 
 /** The first value of the response header [name] (case-insensitive), or `null` when it is absent. */

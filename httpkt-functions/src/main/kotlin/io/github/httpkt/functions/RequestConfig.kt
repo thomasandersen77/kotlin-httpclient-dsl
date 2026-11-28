@@ -1,5 +1,6 @@
 package io.github.httpkt.functions
 
+import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
@@ -17,7 +18,19 @@ open class HttpException(
     val status: Int,
     val body: String,
     message: String,
-) : RuntimeException(message)
+) : RuntimeException(message) {
+
+    /** The mapper of the [RequestConfig] that made the call, so [bodyAs] reads errors like it reads results. */
+    @PublishedApi
+    internal var objectMapper: ObjectMapper = mapper
+
+    /**
+     * The error [body] as [T], with the same rules as a normal result: `String` is the raw text,
+     * an empty body is `null` when [T] is nullable, and anything else is deserialized from JSON,
+     * for example into the API's error type.
+     */
+    inline fun <reified T> bodyAs(): T = body.asType(objectMapper)
+}
 
 /**
  * Client faults - HTTP 400..499
@@ -50,8 +63,14 @@ internal val mapper: ObjectMapper = jacksonObjectMapper()
  * A new `ObjectMapper` configured like the one [RequestConfig] uses by default (Kotlin module,
  * Java time, ISO dates). Adjust the copy and pass it as `RequestConfig(objectMapper = ...)`;
  * the shared default is never changed.
+ *
+ * @param ignoreUnknownProperties `true` makes JSON fields that your type does not declare be
+ * skipped instead of failing. Use it for an API you do not control, which may add fields at any
+ * time. `@JsonIgnoreProperties(ignoreUnknown = true)` on a type does the same for that type.
  */
-fun defaultObjectMapper(): ObjectMapper = mapper.copy()
+@JvmOverloads
+fun defaultObjectMapper(ignoreUnknownProperties: Boolean = false): ObjectMapper =
+    mapper.copy().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, !ignoreUnknownProperties)
 
 /**
  * Everything the requests to one API share. The calls are extension functions on it: [get],
@@ -152,7 +171,7 @@ private fun relativePath(path: String, base: String): String {
 }
 
 /** Null is skipped; an `Iterable` or any array gives one value per non-null element (`id=1&id=2`). */
-private fun queryValuesOf(value: Any?): List<String> = when (value) {
+internal fun queryValuesOf(value: Any?): List<String> = when (value) {
     null -> emptyList()
     is Iterable<*> -> value.filterNotNull().map { it.toString() }
     is Array<*> -> value.filterNotNull().map { it.toString() }

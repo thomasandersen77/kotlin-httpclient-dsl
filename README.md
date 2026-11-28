@@ -4,53 +4,65 @@
 [![Java 11+](https://img.shields.io/badge/Java-11%2B-blue)](#installation)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-A small, idiomatic Kotlin library for calling HTTP APIs — built directly on the JDK's `java.net.http.HttpClient` and Jackson.
+Call HTTP APIs from Kotlin with typed results, on the JDK's own `java.net.http.HttpClient` and Jackson.
 
-- **One dependency to add.** Pick one of the two independent modules below.
-- **Minimal classpath.** Only Kotlin stdlib and Jackson — no third-party HTTP client, no logging framework, no XML library, and no Spring or framework tie-in.
-- **No global state.** No service loading, no logging binding, and no shared mutable configuration — every client or config carries its own settings and `ObjectMapper`.
+- **One dependency to add.** Kotlin stdlib and Jackson are all it brings along: no third-party HTTP client, no logging framework, no Spring.
+- **Typed in, typed out.** You send and receive your own `data class`es. The return type of your function decides how the response is read.
+- **Made for other people's APIs.** Tokens that expire, error bodies, unknown JSON fields and timeouts are handled in a line each.
 
-## Quick start
+## Get started
 
 ```kotlin
 import io.github.httpkt.dsl.*
 
-val http = HttpClientDsl(
-    baseUrl = "https://api.example.com",
-    authorization = Authorization.cachedBearer { fetchToken() }, // fetched once, refreshed on 401
-)
+data class Product(val id: String, val name: String, val price: BigDecimal)
+data class Order(val id: String, val status: String)
 
-val created = http.post("/orders") {
-    json(NewOrder(customer = "acme", items = listOf("book")))
-}.bodyAs<Order>()
+val shop = HttpKt("https://api.shop.example")
 
-val order = http.get("/orders/{id}", 42).bodyAsOrNull<Order>()   // null on 404
+val product = shop.get("/products/{id}", "p-1").bodyAs<Product>()
+val order = shop.post("/orders") { json(mapOf("productId" to product.id)) }.bodyAs<Order>()
+val maybe = shop.get("/orders/{id}", "o-404").bodyAsOrNull<Order>()     // null on 404
 ```
 
-**Jump to:** [Choosing a module](#choosing-a-module) · [Installation](#installation) · [DSL module](#1-dsl-module-httpkt-dsl) · [Functions module](#2-functions-module-httpkt-functions) · [Debug logging](#3-debug-logging) · [Good to know](#4-good-to-know)
+That is the whole setup. A status outside `2xx` throws an exception that carries the status and the error body.
+
+**Jump to:** [Two styles](#two-styles-pick-one) · [Installation](#installation) · [The web shop with httpkt-dsl](#the-web-shop-with-httpkt-dsl) · [The web shop with httpkt-functions](#the-web-shop-with-httpkt-functions) · [Someone else's API](#calling-someone-elses-api) · [Authentication and Maskinporten](#authentication) · [Reference](#reference) · [Changelog](CHANGELOG.md)
 
 ---
 
-## Choosing a module
+## Two styles, pick one
 
-Both modules are independent — pick **one** to add to your project:
+There are two independent modules. They do the same job in two styles, and you add **one** of them.
+
+```kotlin
+// httpkt-dsl: shape the request in a block, read the response afterwards
+val shop = HttpKt("https://api.shop.example")
+val order = shop.get("/orders/{id}", "o-1").bodyAs<Order>()
+val created = shop.post("/orders") { json(newOrder) }.bodyAs<Order>()
+
+// httpkt-functions: one call, the result type is the return type
+val shop = RequestConfig("https://api.shop.example")
+val order: Order = shop.get("/orders/{id}", pathParams = mapOf("id" to "o-1"))
+val created: Order = shop.post("/orders", body = newOrder)
+```
 
 | | `httpkt-dsl` | `httpkt-functions` |
 | --- | --- | --- |
+| **You get back** | The JDK's `HttpResponse<String>`, read with `bodyAs<T>()` | Your type `T` directly, or `HttpResult<T>` from `exchange()` |
+| **Good at** | Shaping each request, reading status and headers, your own DSL words | Short typed calls, multipart uploads, file downloads, `copy()` per tenant |
+| **Errors** | `HttpStatusException`, with `e.bodyAs<ApiError>()` | `HttpClientException` (4xx) and `HttpServerException` (5xx), with `e.bodyAs<ApiError>()` |
 | **Package** | `io.github.httpkt.dsl` | `io.github.httpkt.functions` |
-| **Style** | Receiver-lambda DSL: `http.post("/orders") { json(order) }` | Typed one-line calls: `config.post<Order>("/orders", body = order)` |
-| **Return type** | `HttpResponse<String>` + `.bodyAs<T>()` / `.bodyAsOrNull<T>()` | Typed `T` directly, or `HttpResult<T>` via `exchange()` |
-| **Error handling** | `HttpStatusException` (with `e.bodyAs<ApiError>()`) | `HttpException` (`HttpClientException` 4xx, `HttpServerException` 5xx) |
-| **Extras** | `form(...)`, `withoutAuthorization()`, custom DSL extensions | `multipart { ... }`, `downloadFile(...)`, `ByteArray` payloads |
-| **Auth & 401 retry** | `Authorization` (`basic`, `bearer`, `cachedBearer`, or lambda) | `Authorization` (`basic`, `bearer`, `cachedBearer`, or lambda) |
 
-Use **`httpkt-dsl`** when you want to shape each request and inspect responses; use **`httpkt-functions`** when you want concise typed calls, multipart uploads, or file downloads.
+Authentication works the same way in both.
 
 ---
 
 ## Installation
 
-Requires **Java 11** or newer. .0.1`**, available on [Maven Central](https://central.sonatype.com/namespace/io.github.httpkt).
+Requires **Java 11** or newer. Current version: **`1.0.1`**, available on [Maven Central](https://central.sonatype.com/namespace/io.github.httpkt).
+
+> **This README describes 1.1.0, which is not released yet.** `HttpKt`, `expiringBearer`, `formBody`, `requireSuccess`, `defaultObjectMapper(ignoreUnknownProperties = true)` and `bodyAs` on the functions module's exceptions are new in 1.1.0. On 1.0.1, write `HttpClientDsl` where the examples say `HttpKt`; see the [changelog](CHANGELOG.md).
 
 ### Maven
 
@@ -61,7 +73,7 @@ Add **one** of the two modules:
 <dependency>
     <groupId>io.github.httpkt</groupId>
     <artifactId>httpkt-dsl</artifactId>
-    .0.1</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 
@@ -70,7 +82,7 @@ Add **one** of the two modules:
 <dependency>
     <groupId>io.github.httpkt</groupId>
     <artifactId>httpkt-functions</artifactId>
-    .0.1</version>
+    <version>1.0.1</version>
 </dependency>
 ```
 
@@ -78,8 +90,8 @@ Add **one** of the two modules:
 
 ```kotlin
 // Pick one:
-implementation(".0.1")
-// implementation(".0.1")
+implementation("io.github.httpkt:httpkt-dsl:1.0.1")
+// implementation("io.github.httpkt:httpkt-functions:1.0.1")
 ```
 
 <details>
@@ -102,289 +114,362 @@ JSON is the only built-in format. Other formats (such as XML) go through as text
 
 ---
 
-## 1. DSL Module (`httpkt-dsl`)
+## The web shop with httpkt-dsl
 
-All examples below are backed by runnable WireMock tests in [`DslUsageExamplesTest.kt`](httpkt-dsl/src/test/kotlin/io/github/httpkt/dsl/DslUsageExamplesTest.kt).
+One example runs through this README: a web shop with products, a customer's cart and orders. Wrap the API in one small class, so the rest of your code sees your own types and never an `HttpResponse`.
 
-### Building a typed API client
+```kotlin
+data class Product(val id: String, val name: String, val price: BigDecimal)
+data class CartLine(val productId: String, val quantity: Int)
+data class Cart(val customerId: String, val lines: List<CartLine>)
+data class Address(val street: String, val postalCode: String, val city: String)
+data class NewOrder(val customerId: String, val deliveryAddress: Address)
+data class Order(val id: String, val status: String, val total: BigDecimal, val deliveryAddress: Address, val createdAt: Instant)
+data class ShopError(val code: String, val message: String)
 
-Keep `HttpResponse` inside one small client class per remote API and expose domain types to callers:
+sealed interface PlaceOrderResult {
+    data class Placed(val order: Order) : PlaceOrderResult
+    data class OutOfStock(val error: ShopError) : PlaceOrderResult
+}
+```
 
 ```kotlin
 import io.github.httpkt.dsl.*
-import java.net.URI
 
-class OrderClient(private val http: HttpClientDsl) {
+class ShopClient(private val http: HttpKt) {
 
-    fun find(id: Long): OrderDto? =
-        http.get("/orders/{id}", id).bodyAsOrNull()            // {id} is URL-encoded; 404 gives null
-
-    fun search(status: String, page: Int = 0): List<OrderDto> =
-        http.get("/orders") {
-            queryParam("status", status)
-            queryParam("page", page)
+    fun searchProducts(category: String, inStock: Boolean = true): List<Product> =
+        http.get("/products") {
+            queryParam("category", category)
+            queryParam("inStock", inStock)
         }.bodyAs()
 
-    fun create(order: NewOrderDto): URI {
+    fun addToCart(customerId: String, productId: String, quantity: Int): Cart =
+        http.put("/customers/{customerId}/cart/items/{productId}", customerId, productId) {
+            json(mapOf("quantity" to quantity))
+        }.bodyAs()
+
+    fun placeOrder(order: NewOrder): PlaceOrderResult {
         val response = http.post("/orders") { json(order) }
-        response.bodyAs<Unit>()                                // throws HttpStatusException unless 2xx
-        return URI.create(response.header("Location") ?: error("Missing Location header"))
+        return when (response.statusCode()) {
+            409 -> PlaceOrderResult.OutOfStock(response.toStatusException().bodyAs())
+            else -> PlaceOrderResult.Placed(response.bodyAs())    // throws unless 2xx
+        }
     }
 
-    fun cancel(id: Long) {
-        http.delete("/orders/{id}", id).bodyAs<Unit>()
-    }
-}
-```
+    fun changeDeliveryAddress(orderId: String, address: Address): Order =
+        http.patch("/orders/{id}", orderId) { json(mapOf("deliveryAddress" to address)) }.bodyAs()
 
-### Authentication & automatic 401 refresh
+    fun findOrder(orderId: String): Order? =
+        http.get("/orders/{id}", orderId).bodyAsOrNull()          // null on 404
 
-Supply an `Authorization` once on the client. `Authorization.cachedBearer` fetches a token once and, if the server answers `401`, fetches a fresh token and resends the request once:
-
-```kotlin
-val tokenClient = HttpClientDsl("https://auth.example.com")
-
-val http = HttpClientDsl(
-    baseUrl = "https://api.example.com",
-    authorization = Authorization.cachedBearer {
-        tokenClient.post("/oauth/token") {
-            form("grant_type" to "client_credentials")
-        }.body()
-    },
-)
-
-http.get("/orders")                                       // uses cached token, refreshes on 401
-http.get("/admin") { basicAuth("admin", "secret") }       // overrides auth for this call
-http.get("/public") { withoutAuthorization() }            // omits Authorization header
-```
-
-Static or custom schemes never retry on `401`: `Authorization.basic(user, pass)`, `Authorization.bearer(token)`, `Authorization.bearer { getToken() }`, or any lambda `authorization = { "ApiKey $key" }`.
-
-<details>
-<summary>Example: custom expiry-based Authorization</summary>
-
-Implement the `Authorization` interface when you want proactive refresh before expiry as well as retry after `401`:
-
-```kotlin
-class ExpiringTokenAuthorization(
-    private val now: () -> Instant = Instant::now,
-    private val margin: Duration = Duration.ofSeconds(30),
-    private val fetch: () -> IssuedToken,
-) : Authorization {
-    private var current: IssuedToken? = null
-
-    @Synchronized
-    override fun headerValue(): String {
-        val token = current?.takeIf { now() < it.expiresAt.minus(margin) } ?: fetch().also { current = it }
-        return "Bearer ${token.value}"
-    }
-
-    @Synchronized
-    override fun onUnauthorized(rejectedHeaderValue: String): Boolean {
-        current = null
-        return true
+    fun cancelOrder(orderId: String) {
+        http.delete("/orders/{id}", orderId).requireSuccess()     // throws unless 2xx
     }
 }
 
-val http = HttpClientDsl(
-    baseUrl = "https://api.example.com",
-    authorization = ExpiringTokenAuthorization { tokenService.issue() },
+val shop = ShopClient(HttpKt("https://api.shop.example"))
+```
+
+What to notice:
+
+- **The return type does the work.** `bodyAs()` needs no type argument when the function already says `List<Product>` or `Order`.
+- **`{placeholders}` are filled in order** and URL-encoded, so an id with a slash or a space is safe.
+- **"Out of stock" is a result, not an exception.** The calls never throw on a status. `bodyAs` is what throws, so you can branch on `statusCode()` first.
+- **`Instant`, `LocalDate` and `BigDecimal` just work**, as ISO strings and numbers.
+
+This is runnable: [`ShopExampleTest.kt`](httpkt-dsl/src/test/kotlin/io/github/httpkt/dsl/examples/ShopExampleTest.kt) runs every method against WireMock.
+
+---
+
+## The web shop with httpkt-functions
+
+The same shop, seen from the customer's side: the profile, the order history, a photo and a receipt.
+
+```kotlin
+data class CustomerProfile(val id: String, val name: String, val email: String, val memberSince: LocalDate)
+data class NewCustomer(val name: String, val email: String)
+data class OrderSummary(val id: String, val status: String, val total: BigDecimal)
+data class Page<T>(val items: List<T>, val page: Int, val totalPages: Int)
+data class ShopError(val code: String, val message: String)
+
+sealed interface RegisterResult {
+    data class Registered(val profile: CustomerProfile) : RegisterResult
+    data class EmailTaken(val error: ShopError) : RegisterResult
+}
+```
+
+```kotlin
+import io.github.httpkt.functions.*
+
+class CustomerClient(private val shop: RequestConfig) {
+
+    fun register(customer: NewCustomer): RegisterResult = try {
+        RegisterResult.Registered(shop.post("/customers", body = customer))
+    } catch (e: HttpClientException) {
+        if (e.status != 409) throw e
+        RegisterResult.EmailTaken(e.bodyAs())
+    }
+
+    fun find(id: String): CustomerProfile? =
+        shop.getOrNull("/customers/{id}", pathParams = mapOf("id" to id))      // null on 404
+
+    fun changeEmail(id: String, email: String): CustomerProfile =
+        shop.patch("/customers/{id}", body = mapOf("email" to email), pathParams = mapOf("id" to id))
+
+    fun orders(customerId: String, page: Int = 0, status: String? = null): Page<OrderSummary> =
+        shop.get(
+            "/customers/{id}/orders",
+            queryParams = mapOf("page" to page, "status" to status),            // a null filter is left out
+            pathParams = mapOf("id" to customerId),
+        )
+
+    fun uploadPhoto(customerId: String, photo: Path) {
+        shop.put<Unit>(
+            "/customers/{id}/photo",
+            body = multipart { file("photo", photo, contentType = "image/jpeg") },
+            pathParams = mapOf("id" to customerId),
+        )
+    }
+
+    fun downloadReceipt(orderId: String, destination: Path): Path =
+        shop.downloadFile("/orders/{id}/receipt", destination, pathParams = mapOf("id" to orderId))
+
+    fun delete(id: String): Unit =
+        shop.delete("/customers/{id}", pathParams = mapOf("id" to id))
+}
+
+val customers = CustomerClient(RequestConfig("https://api.shop.example"))
+```
+
+What to notice:
+
+- **A call is one expression.** The function's return type, generics included (`Page<OrderSummary>`), decides how the JSON is read.
+- **`pathParams` are named**, must match the placeholders exactly, and are URL-encoded.
+- **Files are built in.** `multipart { }` uploads, and `downloadFile` streams to disk and only replaces the destination after a `2xx`.
+- **`RequestConfig` is a `data class`**, so a variant is a `copy` away: `shop.copy(headers = shop.headers + ("X-Tenant" to "acme"))`.
+
+This is runnable too: [`ShopExampleTest.kt`](httpkt-functions/src/test/kotlin/io/github/httpkt/functions/examples/ShopExampleTest.kt).
+
+---
+
+## Calling someone else's API
+
+An API you do not own changes without asking you. Four settings make a client that survives that, shown here for both modules:
+
+```kotlin
+// httpkt-dsl
+val payments = HttpKt(
+    baseUrl = "https://api.payments.example/v2",                          // the path prefix is kept on every call
+    objectMapper = defaultObjectMapper(ignoreUnknownProperties = true),   // they may add JSON fields at any time
+    requestTimeout = Duration.ofSeconds(5),                               // do not wait 30 s for someone else
+    defaultHeaders = mapOf("Accept" to "application/json"),
+    authorization = Authorization.expiringBearer { tokens.fetch() },      // see Authentication below
+)
+
+// httpkt-functions
+val payments = RequestConfig(
+    url = "https://api.payments.example/v2",
+    objectMapper = defaultObjectMapper(ignoreUnknownProperties = true),
+    requestTimeout = Duration.ofSeconds(5),
+    authorization = Authorization.expiringBearer { tokens.fetch() },
 )
 ```
 
-</details>
+Keep one small client class per remote API, as `ShopClient` and `CustomerClient` above, and translate at the edge:
 
-### Headers, query parameters, forms & timeouts
+- **Their types stay in the client class.** Map their DTOs and their error codes to your own types there, so a change on their side changes one file.
+- **Their expected errors become your results.** A `409` or `422` that means something in your domain is a `sealed interface` case; everything else stays an exception.
+- **The exceptions are safe to log.** Their messages never contain the query string, headers or body. Those are on the exception when you ask for them.
 
-Put defaults on `HttpClientDsl` and override per request when needed:
+---
+
+## Authentication
+
+Give the client an `Authorization` once. It is asked for the header value on every request, so the token is never stale by construction. The same four steps exist in both modules.
 
 ```kotlin
-val http = HttpClientDsl(
-    baseUrl = "https://api.example.com/v1?api-version=2",      // path prefix & query are kept on every call
-    defaultHeaders = mapOf("Accept" to "application/json", "X-Tenant" to "acme"),
-    requestTimeout = Duration.ofSeconds(5),                    // default is 30 s
-    objectMapper = defaultObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES),
+// 1. A fixed credential
+authorization = Authorization.bearer(token)
+authorization = Authorization.basic(username, password)
+authorization = Authorization { "ApiKey $key" }                  // any other scheme is a lambda
+
+// 2. A token that is fetched once, and again when the server answers 401
+authorization = Authorization.cachedBearer { fetchToken() }
+
+// 3. A token with a known lifetime: fetched again shortly before it expires, and after a 401
+authorization = Authorization.expiringBearer { fetchToken() }    // returns ExpiringToken(token, expiresIn)
+```
+
+With `cachedBearer` and `expiringBearer`, a request that gets a `401` is sent once more with a fresh token, and concurrent requests share one token fetch.
+
+In the DSL module a single request can also step outside the client's setting:
+
+```kotlin
+http.get("/admin") { basicAuth("admin", "secret") }       // another credential for this call
+http.get("/public") { withoutAuthorization() }            // no Authorization header
+```
+
+### Maskinporten
+
+[Maskinporten](https://docs.digdir.no/docs/Maskinporten/maskinporten_protocol_jwtgrant) is the Norwegian public sector's machine-to-machine login: you sign a short-lived JWT with your own key, exchange it for an access token, and send that token to the API. With `expiringBearer` the API client is this:
+
+```kotlin
+val spk = HttpKt(
+    baseUrl = "https://api.spk.example",
+    authorization = Authorization.expiringBearer { maskinporten.fetchToken() },
 )
 
-// Override default headers and timeout per request
+val membership = spk.get("/pensjon/v1/medlemskap").bodyAs<Membership>()
+```
+
+The token is fetched on the first call, reused, and replaced 30 seconds before it expires. `fetchToken` is the part you write once, and it needs nothing but the JDK:
+
+```kotlin
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class TokenResponse(
+    @JsonProperty("access_token") val accessToken: String,
+    @JsonProperty("expires_in") val expiresIn: Long,
+)
+
+class Maskinporten(
+    baseUrl: String,                       // "https://test.maskinporten.no"
+    private val audience: String,          // "https://test.maskinporten.no/", production "https://maskinporten.no/"
+    private val clientId: String,
+    private val scope: String,
+    private val keyId: String,
+    private val privateKey: PrivateKey,
+) {
+    // No authorization on this client: the signed grant is what identifies us.
+    private val http = HttpKt(baseUrl)
+
+    fun fetchToken(): ExpiringToken {
+        val response = http.post("/token") {
+            form(
+                "grant_type" to "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "assertion" to signedGrant(),
+            )
+        }.bodyAs<TokenResponse>()
+        return ExpiringToken(response.accessToken, expiresIn = Duration.ofSeconds(response.expiresIn))
+    }
+
+    /** An RS256-signed JWT, made with the JDK alone. */
+    private fun signedGrant(): String {
+        val now = Instant.now().epochSecond
+        val header = mapOf("alg" to "RS256", "kid" to keyId)
+        val claims = mapOf(
+            "aud" to audience,
+            "iss" to clientId,
+            "scope" to scope,
+            "iat" to now,
+            "exp" to now + 120,
+            "jti" to UUID.randomUUID().toString(),
+        )
+        val unsigned = base64Url(http.objectMapper.writeValueAsBytes(header)) + "." +
+            base64Url(http.objectMapper.writeValueAsBytes(claims))
+        val signature = Signature.getInstance("SHA256withRSA").run {
+            initSign(privateKey)
+            update(unsigned.toByteArray(StandardCharsets.US_ASCII))
+            sign()
+        }
+        return unsigned + "." + base64Url(signature)
+    }
+
+    private fun base64Url(bytes: ByteArray): String = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+}
+```
+
+In `httpkt-functions` only the token call differs:
+
+```kotlin
+private val maskinporten = RequestConfig(url = baseUrl)
+
+val response: TokenResponse = maskinporten.post(
+    "/token",
+    body = formBody(
+        "grant_type" to "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "assertion" to signedGrant(),
+    ),
+)
+```
+
+Both versions run as tests with a generated key, and the tests verify the signature: [DSL](httpkt-dsl/src/test/kotlin/io/github/httpkt/dsl/examples/MaskinportenExampleTest.kt), [functions](httpkt-functions/src/test/kotlin/io/github/httpkt/functions/examples/MaskinportenExampleTest.kt). Three things from Digdir's documentation are worth knowing before you adapt it:
+
+- A grant may live at most 180 seconds, and Maskinporten rejects a grant with claims it does not know.
+- `kid` is for a key you have registered on the client. With a business certificate you send `x5c` instead.
+- The example shows the test environment. Take the production token endpoint from Maskinporten's own metadata rather than from this README.
+
+The same shape fits any OAuth 2.0 token endpoint that answers with `expires_in`, such as Entra ID client credentials: only the form fields change.
+
+---
+
+## Reference
+
+More small examples live in [`DslUsageExamplesTest.kt`](httpkt-dsl/src/test/kotlin/io/github/httpkt/dsl/DslUsageExamplesTest.kt) and [`FunctionsUsageExamplesTest.kt`](httpkt-functions/src/test/kotlin/io/github/httpkt/functions/FunctionsUsageExamplesTest.kt).
+
+### httpkt-dsl: building a request
+
+```kotlin
 http.get("/orders/export") {
-    header("Accept", "text/csv")                               // replaces default Accept
-    requestTimeout = Duration.ofSeconds(60)
-}
-
-// Multi-value query parameters (null values are skipped)
-http.get("/orders") {
-    queryParam("id", listOf(1, 2, 3))                          // ?api-version=2&id=1&id=2&id=3
+    header("Accept", "text/csv")                               // replaces a default header of the same name
+    requestTimeout = Duration.ofSeconds(60)                    // for this request only
+    queryParam("id", listOf(1, 2, 3))                          // ?id=1&id=2&id=3
     queryParam("note", null)                                   // skipped
 }
 
-// URL-encoded form body (sets Content-Type: application/x-www-form-urlencoded)
 http.post("/oauth/token") {
-    withoutAuthorization()
     form("grant_type" to "client_credentials", "scope" to "orders:read orders:write")
 }
 
-// Raw text / XML body
 http.post("/webhooks") {
-    body("<event id=\"1\"/>", "application/xml")
+    body("<event id=\"1\"/>", "application/xml")               // any text body
 }
 ```
 
-- `header(...)` and `defaultHeaders` reject `Content-Type` and `Authorization` (`IllegalArgumentException`) so a request can never accidentally carry duplicate values — use `contentType(...)` and `authorization` / `bearerToken` / `basicAuth`.
-- `GET` and `DELETE` reject a body (`IllegalStateException`) before sending.
+- `header(...)` and `defaultHeaders` reject `Content-Type` and `Authorization` (`IllegalArgumentException`), so a request can never carry two values. Use `contentType(...)` and `authorization`, `bearerToken` or `basicAuth`.
+- `GET` and `DELETE` reject a body (`IllegalStateException`) before anything is sent.
 
-### Reading responses & handling errors
+Repeated conventions become your own DSL words, as plain extension functions:
 
-`get`, `post`, `put`, `patch`, and `delete` always return `HttpResponse<String>` without throwing on HTTP error statuses. Choose how to read the response:
+```kotlin
+fun RequestDsl.tenant(id: String) = header("X-Tenant", id)
+
+http.get("/orders") { tenant("acme") }
+```
+
+### httpkt-dsl: reading a response
+
+`get`, `post`, `put`, `patch` and `delete` return the response whatever its status. How you read it decides what happens:
 
 | Call | 2xx behavior | Non-2xx behavior |
 | --- | --- | --- |
 | `response.body()` | Raw response text | Raw response text (never throws) |
-| `response.bodyAs<OrderDto>()` | Deserializes JSON | Throws `HttpStatusException` |
-| `response.bodyAsOrNull<OrderDto>()` | Deserializes JSON (`null` if empty) | `null` on `404`, otherwise throws |
+| `response.bodyAs<Order>()` | Deserializes JSON | Throws `HttpStatusException` |
+| `response.bodyAsOrNull<Order>()` | Deserializes JSON (`null` if empty) | `null` on `404`, otherwise throws |
 | `response.bodyAs<String>()` | Raw text unparsed (empty/blank included) | Throws `HttpStatusException` |
+| `response.requireSuccess()` | Returns the response, for headers or chaining | Throws `HttpStatusException` |
 | `response.bodyAs<Unit>()` | Ignores body, returns `Unit` | Throws `HttpStatusException` |
 
-Read structured error bodies directly from `HttpStatusException`, or branch on `statusCode()` yourself:
 
 ```kotlin
-// Option 1: catch HttpStatusException and parse the error body with the client's ObjectMapper
 try {
-    http.post("/orders") { json(order) }.bodyAs<OrderDto>()
+    http.post("/orders") { json(order) }.bodyAs<Order>()
 } catch (e: HttpStatusException) {
-    // e.message: "HTTP status 422 for POST https://api.example.com/orders" (safe to log: no query/body)
-    val error = e.bodyAs<ApiErrorDto>()
-}
-
-// Option 2: branch on the status code before deserializing
-val response = http.post("/orders") { json(order) }
-when (response.statusCode()) {
-    201 -> response.bodyAs<OrderDto>()
-    422 -> http.objectMapper.readValue<ApiErrorDto>(response.body())
-    else -> throw response.toStatusException()
+    // e.message: "HTTP status 422 for POST https://api.shop.example/orders"
+    val error = e.bodyAs<ShopError>()
 }
 ```
 
-### Extending the DSL with your own words
-
-`RequestDsl` is a regular class, so repeated headers or conventions become plain Kotlin extensions:
+### httpkt-functions: status, headers and raw content
 
 ```kotlin
-fun RequestDsl.tenant(id: String) = header("X-Tenant", id)
-fun RequestDsl.acceptJson() = header("Accept", "application/json")
+// The status and the response headers, when the body is not enough
+val created = shop.exchange<Order>(Method.POST, "/orders", body = newOrder)
+val location = created.header("Location")
 
-http.get("/orders") {
-    tenant("acme")
-    acceptJson()
-    queryParam("status", "OPEN")
-}
-```
-
----
-
-## 2. Functions Module (`httpkt-functions`)
-
-All typed-client and config examples below come from runnable tests in [`FunctionsUsageExamplesTest.kt`](httpkt-functions/src/test/kotlin/io/github/httpkt/functions/FunctionsUsageExamplesTest.kt).
-
-### Building a typed API client
-
-Create a `RequestConfig` and call `get`, `getOrNull`, `post`, `put`, `patch`, `delete`, `exchange`, or `downloadFile`:
-
-```kotlin
-import com.fasterxml.jackson.module.kotlin.readValue
-import io.github.httpkt.functions.*
-
-sealed interface CreateCustomerResult {
-    data class Created(val customer: Customer) : CreateCustomerResult
-    data class AlreadyExists(val problem: Problem) : CreateCustomerResult
-}
-
-class CustomerClient(private val config: RequestConfig) {
-
-    fun find(id: String): Customer? =
-        config.getOrNull("/customers/{id}", pathParams = mapOf("id" to id))
-
-    fun list(page: Int = 0, size: Int = 20, nameFilter: String? = null): Page<Customer> =
-        config.get("/customers", queryParams = mapOf("page" to page, "size" to size, "name" to nameFilter))
-
-    fun create(customer: NewCustomer): CreateCustomerResult = try {
-        CreateCustomerResult.Created(config.post("/customers", body = customer))
-    } catch (e: HttpClientException) {
-        if (e.status != 409) throw e
-        CreateCustomerResult.AlreadyExists(config.objectMapper.readValue(e.body))
-    }
-
-    fun rename(id: String, name: String): Customer =
-        config.patch("/customers/{id}", body = mapOf("name" to name), pathParams = mapOf("id" to id))
-
-    fun remove(id: String): Unit =
-        config.delete("/customers/{id}", pathParams = mapOf("id" to id))
-
-    fun createAndLocate(customer: NewCustomer): Pair<Customer, String?> {
-        val created = config.exchange<Customer>(Method.POST, "/customers", body = customer)
-        return created.body to created.header("Location")
-    }
-}
-```
-
-- Placeholders in `path` (`{id}`) must match `pathParams` keys exactly (`IllegalArgumentException` otherwise) and are URL-encoded automatically.
-- `queryParams` skips `null` values and repeats the key for `Iterable` or array values (`mapOf("id" to listOf("c-1", "c-2"))` → `?id=c-1&id=c-2`).
-- Non-`2xx` responses throw `HttpClientException` (`4xx`), `HttpServerException` (`5xx`), or `HttpException` (other), all carrying `status` and `body`.
-
-### Deriving configurations & authentication
-
-Because `RequestConfig` is a `data class`, tenant variants, timeouts, and custom mappers are a `copy(...)` away:
-
-```kotlin
-val base = RequestConfig(
-    url = "https://api.example.com/api/v1",
-    headers = mapOf("Accept-Language" to "nb"),
-)
-
-val acme = base.copy(headers = base.headers + ("X-Tenant" to "acme"))
-val impatient = base.copy(requestTimeout = Duration.ofSeconds(2))
-val tolerant = base.copy(
-    objectMapper = defaultObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES),
-)
-
-// Cached OAuth token with automatic retry on 401 (token call uses its own config without auth)
-val authServer = RequestConfig(url = "https://auth.example.com")
-val authenticated = base.copy(
-    authorization = Authorization.cachedBearer {
-        authServer.post<String>(
-            "/oauth/token",
-            body = "grant_type=client_credentials",
-            contentType = "application/x-www-form-urlencoded",
-        )
-    },
-)
-
-// Any other scheme is a one-line lambda (does not retry on 401)
-val apiKeyConfig = base.copy(authorization = { "ApiKey $key" })
-```
-
-### Multipart uploads, binary payloads & file downloads
-
-```kotlin
-import java.nio.file.Path
-
-// Multipart/form-data upload
-val body = multipart {
-    field("description", "Monthly report")
-    file("document", Path.of("report.pdf"), contentType = "application/pdf")
-}
-config.post<Unit>("/documents", body = body)
-
-// Download to disk (streams to a temporary .part file and moves into place only on 2xx)
-config.downloadFile(
-    path = "/documents/{id}",
-    destination = Path.of("downloads/report.pdf"),
-    pathParams = mapOf("id" to "42"),
-)
-
-// In-memory binary download or raw XML/text
-val png: ByteArray = config.get("/assets/logo.png")
-val xml: String = config.post(
+// Raw bytes and raw text
+val logo: ByteArray = shop.get("/assets/logo.png")
+val xml: String = shop.post(
     "/webhooks",
     body = "<event id=\"1\"/>",
     contentType = "application/xml",
@@ -392,17 +477,19 @@ val xml: String = config.post(
 )
 ```
 
-### Header defaults & precedence
+A status outside `2xx` throws `HttpClientException` (`4xx`), `HttpServerException` (`5xx`) or `HttpException` (anything else). All three carry `status` and `body`, and `e.bodyAs<ShopError>()` reads the body as your error type.
+
+### httpkt-functions: header defaults and precedence
 
 - **`Accept`** defaults to `application/json`, or `*/*` for `ByteArray` results and `downloadFile`. Override it via `headers`.
 - **`Content-Type`** is only sent when the request has a body (any `Content-Type` in `headers` is dropped for bodyless calls):
-  - Default: `application/octet-stream` for `ByteArray`, `multipart/form-data; boundary=...` for `multipart { }`, otherwise `application/json` (including `String` bodies).
+  - Default: `application/octet-stream` for `ByteArray`, `multipart/form-data; boundary=...` for `multipart { }`, `application/x-www-form-urlencoded` for `formBody(...)`, otherwise `application/json` (including `String` bodies).
   - Precedence (weakest to strongest): body default → `config.headers` → call `contentType` → call `headers`. A `MultipartBody` always keeps its own type and boundary.
 - An `Authorization` entry in `headers` takes precedence over `config.authorization`.
 
 ---
 
-## 3. Debug logging
+## Debug logging
 
 Both modules log each request at `DEBUG` via the JDK's `System.Logger`, keeping zero logging dependencies. Nothing is logged until you enable `DEBUG`:
 
@@ -431,13 +518,13 @@ For low-level wire diagnostics from the JDK itself, pass `-Djdk.httpclient.HttpC
 
 ---
 
-## 4. Good to know
+## Good to know
 
 **DSL module**
-- Unknown JSON fields fail by default — annotate DTOs with `@JsonIgnoreProperties(ignoreUnknown = true)` or pass a configured `defaultObjectMapper()`.
+- Unknown JSON fields fail by default. Pass `defaultObjectMapper(ignoreUnknownProperties = true)` or annotate a type with `@JsonIgnoreProperties(ignoreUnknown = true)`.
 - No `Accept` header is sent unless you set one via `defaultHeaders` or `header(...)`.
 - `contentType(...)` describes the body, so a request without a body sends no `Content-Type` (from 1.0.1).
-- `bodyAs` uses the client's `ObjectMapper` for responses returned by `HttpClientDsl` and falls back to the library default for any other `HttpResponse<String>`.
+- `bodyAs` uses the client's `ObjectMapper` for responses returned by `HttpKt` and falls back to the library default for any other `HttpResponse<String>`.
 
 **Functions module**
 - A `String` body is sent with `Content-Type: application/json` unless you pass `contentType`.
@@ -450,7 +537,7 @@ For low-level wire diagnostics from the JDK itself, pass `-Djdk.httpclient.HttpC
 
 **Both modules**
 - Request paths must be relative to `baseUrl` / `url`: `scheme://...`, `//host...`, and `http:`/`https:` are rejected. A leading `/` is optional (`orders:cancel` and `/orders:cancel` resolve identically).
-- Inside `Authorization.cachedBearer`, the token fetch runs while holding a lock so concurrent requests share one refresh — do not dispatch the fetch to another thread that uses the same `Authorization`.
+- Inside `Authorization.cachedBearer` and `expiringBearer`, the token fetch runs while holding a lock so concurrent requests share one refresh — do not dispatch the fetch to another thread that uses the same `Authorization`.
 - Each client or config gets its own copy of the default `ObjectMapper`, so reconfiguring it never affects other clients.
 - `requestTimeout` must be positive; zero or a negative duration is rejected when the client or config is created.
 - On the Java module path the modules are named `io.github.httpkt.dsl` and `io.github.httpkt.functions` (`Automatic-Module-Name`, from 1.0.1).
@@ -460,4 +547,4 @@ For low-level wire diagnostics from the JDK itself, pass `-Djdk.httpclient.HttpC
 
 ## License
 
-[Apache License 2.0](LICENSE).
+[Apache License 2.0](LICENSE). Changes between versions are in the [changelog](CHANGELOG.md).

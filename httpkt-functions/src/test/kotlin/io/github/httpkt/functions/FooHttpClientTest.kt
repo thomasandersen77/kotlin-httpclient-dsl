@@ -631,6 +631,92 @@ internal class FooHttpClientTest {
     }
 
     @Test
+    internal fun `expiringBearer reuses a token until the refresh margin, and fetches again after a 401`() {
+        wiremock.stubFor(get(urlEqualTo("/expiring/orders")).willReturn(aResponse().withStatus(204)))
+        var clock = java.time.Instant.parse("2026-11-28T10:00:00Z")
+        val issued = AtomicInteger()
+        val config = RequestConfig(
+            url = "http://localhost:${wiremock.port()}",
+            authorization = ExpiringAuthorization(refreshMargin = Duration.ofSeconds(30), now = { clock }) {
+                ExpiringToken("expiring-${issued.incrementAndGet()}", expiresAt = clock.plusSeconds(120))
+            },
+        )
+
+        config.get<Unit>("/expiring/orders")
+        clock = clock.plusSeconds(89)      // 31 s left: still used
+        config.get<Unit>("/expiring/orders")
+        clock = clock.plusSeconds(1)       // 30 s left: inside the margin, fetched again
+        config.get<Unit>("/expiring/orders")
+
+        assertEquals(2, issued.get())
+        wiremock.verify(2, getRequestedFor(urlEqualTo("/expiring/orders")).withHeader("Authorization", equalTo("Bearer expiring-1")))
+        wiremock.verify(1, getRequestedFor(urlEqualTo("/expiring/orders")).withHeader("Authorization", equalTo("Bearer expiring-2")))
+
+        wiremock.stubFor(get(urlEqualTo("/expiring/revoked")).withHeader("Authorization", equalTo("Bearer expiring-2"))
+            .willReturn(aResponse().withStatus(401)))
+        wiremock.stubFor(get(urlEqualTo("/expiring/revoked")).withHeader("Authorization", equalTo("Bearer expiring-3"))
+            .willReturn(aResponse().withStatus(204)))
+
+        config.get<Unit>("/expiring/revoked")
+        assertEquals(3, issued.get())
+    }
+
+    @Test
+    internal fun `expiringBearer rejects a negative margin and ExpiringToken hides the token in toString`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            Authorization.expiringBearer(refreshMargin = Duration.ofSeconds(-1)) { ExpiringToken("t", Duration.ofSeconds(60)) }
+        }
+        assertFalse(ExpiringToken("very-secret", expiresIn = Duration.ofSeconds(60)).toString().contains("very-secret"))
+    }
+
+    @Test
+    internal fun `formBody sends an url-encoded form, skips null and repeats a list`() {
+        wiremock.stubFor(post(urlEqualTo("/form/token")).willReturn(okJson("""{"name":"token"}""")))
+        val config = RequestConfig(url = "http://localhost:${wiremock.port()}")
+
+        val body = formBody(
+            "grant_type" to "urn:ietf:params:oauth:grant-type:jwt-bearer",
+            "scope" to "orders:read orders:write",
+            "skipped" to null,
+            "id" to listOf(1, 2),
+            "navn" to "Blåbær & co",
+        )
+        val result: Foo = config.post("/form/token", body = body)
+
+        assertEquals(Foo("token"), result)
+        wiremock.verify(postRequestedFor(urlEqualTo("/form/token"))
+            .withHeader("Content-Type", equalTo("application/x-www-form-urlencoded"))
+            .withRequestBody(equalTo(
+                "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&scope=orders%3Aread+orders%3Awrite" +
+                    "&id=1&id=2&navn=Bl%C3%A5b%C3%A6r+%26+co",
+            )))
+        assertFalse(body.toString().contains("grant_type"))
+    }
+
+    @Test
+    internal fun `HttpException bodyAs reads the error body with the config's ObjectMapper`(@TempDir tempDir: Path) {
+        wiremock.stubFor(get(urlEqualTo("/errors/typed")).willReturn(aResponse().withStatus(422)
+            .withBody("""{"name":"invalid","addedLater":true}""")))
+        val url = "http://localhost:${wiremock.port()}"
+        val tolerant = RequestConfig(url = url, objectMapper = defaultObjectMapper(ignoreUnknownProperties = true))
+        val strict = RequestConfig(url = url)
+
+        val error = assertThrows(HttpClientException::class.java) { tolerant.get<Foo>("/errors/typed") }
+        assertEquals(Foo("invalid"), error.bodyAs<Foo>())
+        assertEquals("""{"name":"invalid","addedLater":true}""", error.bodyAs<String>())
+
+        val download = assertThrows(HttpClientException::class.java) {
+            tolerant.downloadFile("/errors/typed", tempDir.resolve("out.bin"))
+        }
+        assertEquals(Foo("invalid"), download.bodyAs<Foo>())
+
+        val strictError = assertThrows(HttpClientException::class.java) { strict.get<Foo>("/errors/typed") }
+        assertThrows(com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException::class.java) { strictError.bodyAs<Foo>() }
+        // Built by hand, as in a test double: falls back to the library's default mapper.
+        assertEquals(Foo("x"), HttpClientException(400, """{"name":"x"}""").bodyAs<Foo>())
+    }
+
+    @Test
     internal fun `downloadFile keeps at most 64 KB of an error body`(@TempDir tempDir: Path) {
         wiremock.stubFor(get(urlEqualTo("/api/huge-error"))
             .willReturn(aResponse().withStatus(500).withBody("x".repeat(100_000))))
