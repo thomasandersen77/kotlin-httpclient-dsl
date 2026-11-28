@@ -7,7 +7,12 @@ import java.nio.file.Path
 import java.util.UUID
 
 /**
- * Dependency-free builder for `multipart/form-data` request bodies (RFC 7578).
+ * Dependency-free builder for `multipart/form-data` request bodies (RFC 7578). Pass it as the
+ * `body` of [post], [put] or [patch]; the `Content-Type` with the boundary is then set for you.
+ * Usually built with [multipart]. The whole body is assembled in memory before it is sent.
+ *
+ * @param boundary the separator between the parts. The random default is right unless a test
+ * needs a predictable body.
  */
 class MultipartBody(
     val boundary: String = UUID.randomUUID().toString(),
@@ -32,12 +37,14 @@ class MultipartBody(
         }
     }
 
+    /** Adds a text field. Returns this builder, so calls can be chained. */
     fun field(name: String, value: String): MultipartBody {
         requireSingleLine("name", name)
         parts += Part.Field(name, value)
         return this
     }
 
+    /** Adds a file part from bytes already in memory. [filename] is what the server is told. */
     fun file(
         name: String,
         filename: String,
@@ -51,6 +58,7 @@ class MultipartBody(
         return this
     }
 
+    /** Adds a file part read from [path] right away, under the file's own name. */
     fun file(
         name: String,
         path: Path,
@@ -62,6 +70,7 @@ class MultipartBody(
         contentType = contentType,
     )
 
+    /** The `Content-Type` value for this body, boundary included. */
     val contentTypeHeader: String
         get() = "multipart/form-data; boundary=$boundary"
 
@@ -107,6 +116,16 @@ class MultipartBody(
 
 private val boundaryPattern = Regex("[A-Za-z0-9'+_.-]{1,70}")
 
+/**
+ * Builds a [MultipartBody]:
+ *
+ * ```
+ * api.post<Unit>("/documents", body = multipart {
+ *     field("title", "Invoice")
+ *     file("file", Path.of("invoice.pdf"), contentType = "application/pdf")
+ * })
+ * ```
+ */
 fun multipart(block: MultipartBody.() -> Unit): MultipartBody =
     MultipartBody().apply(block)
 

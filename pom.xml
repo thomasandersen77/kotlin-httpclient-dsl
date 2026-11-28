@@ -43,12 +43,15 @@
       <maven.compiler.source>${java.version}</maven.compiler.source>
       <maven.compiler.target>${java.version}</maven.compiler.target>
       <kotlin.version>2.1.10</kotlin.version>
+      <kotlin.api.version>1.9</kotlin.api.version>
       <jackson.version>2.18.2</jackson.version>
       <junit-jupiter.version>5.10.1</junit-jupiter.version>
       <wiremock.version>2.27.2</wiremock.version>
       <logback.version>1.2.5</logback.version>
       <commons-logging.version>1.2</commons-logging.version>
       <maven-surefire-plugin.version>3.5.2</maven-surefire-plugin.version>
+      <maven-jar-plugin.version>3.4.2</maven-jar-plugin.version>
+      <dokka.version>2.3.0</dokka.version>
    </properties>
 
    <dependencyManagement>
@@ -129,6 +132,20 @@
             </configuration>
          </plugin>
          <plugin>
+            <!-- A stable module name for anyone on the Java module path. Without it the name is
+                 derived from the jar's file name. Each module sets automatic.module.name. -->
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-jar-plugin</artifactId>
+            <version>${maven-jar-plugin.version}</version>
+            <configuration>
+               <archive>
+                  <manifestEntries>
+                     <Automatic-Module-Name>${automatic.module.name}</Automatic-Module-Name>
+                  </manifestEntries>
+               </archive>
+            </configuration>
+         </plugin>
+         <plugin>
             <groupId>org.jetbrains.kotlin</groupId>
             <artifactId>kotlin-maven-plugin</artifactId>
             <version>${kotlin.version}</version>
@@ -150,6 +167,9 @@
             </executions>
             <configuration>
                <jvmTarget>${java.version}</jvmTarget>
+               <!-- A build that manages Kotlin, such as Spring Boot 3, can put an older kotlin-stdlib
+                    on the classpath. This makes the compiler reject any stdlib API newer than 1.9. -->
+               <apiVersion>${kotlin.api.version}</apiVersion>
                <args>
                   <arg>-Xjdk-release=${java.version}</arg>
                </args>
@@ -182,28 +202,22 @@
                   </executions>
                </plugin>
                <plugin>
-                  <!-- Central requires a javadoc jar. The API documentation is the KDoc in the sources
-                       jar and the README, so this jar only carries the README and the licence. -->
-                  <groupId>org.apache.maven.plugins</groupId>
-                  <artifactId>maven-jar-plugin</artifactId>
-                  <version>3.4.2</version>
+                  <!-- The javadoc jar Central requires, generated from the KDoc. -->
+                  <groupId>org.jetbrains.dokka</groupId>
+                  <artifactId>dokka-maven-plugin</artifactId>
+                  <version>${dokka.version}</version>
                   <executions>
                      <execution>
                         <id>javadoc-jar</id>
                         <phase>package</phase>
                         <goals>
-                           <goal>jar</goal>
+                           <goal>javadocJar</goal>
                         </goals>
-                        <configuration>
-                           <classifier>javadoc</classifier>
-                           <classesDirectory>${maven.multiModuleProjectDirectory}</classesDirectory>
-                           <includes>
-                              <include>README.md</include>
-                              <include>LICENSE</include>
-                           </includes>
-                        </configuration>
                      </execution>
                   </executions>
+                  <configuration>
+                     <jdkVersion>${java.version}</jdkVersion>
+                  </configuration>
                </plugin>
                <plugin>
                   <groupId>org.apache.maven.plugins</groupId>

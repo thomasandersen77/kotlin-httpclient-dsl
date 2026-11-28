@@ -17,6 +17,7 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.UUID
 
+/** The HTTP methods [exchange] can send. */
 enum class Method {
     GET,
     POST,
@@ -35,15 +36,26 @@ data class HttpResult<T>(
     fun header(name: String): String? = headers.firstValue(name).orElse(null)
 }
 
-/*
-    Idiomatic extension functions on RequestConfig.
-
-    `path` may contain `{name}` placeholders; their URL-encoded values come from `pathParams`.
-
-    `contentType` defaults to the body: `application/octet-stream` for a ByteArray, the multipart
-    type with its boundary for a MultipartBody, and `application/json` for everything else,
-    a String included.
-*/
+/**
+ * Sends a GET and returns the response body as [T]: `Unit` ignores it, `String` is the raw text,
+ * `ByteArray` the raw bytes, and any other type is deserialized from JSON. An empty body gives
+ * `null` when [T] is nullable.
+ *
+ * ```
+ * val api = RequestConfig("https://api.example.com/v1")
+ * val order: Order = api.get("/orders/{id}", pathParams = mapOf("id" to 42))
+ * ```
+ *
+ * @param path relative to [RequestConfig.url]. It may contain `{name}` placeholders.
+ * @param queryParams URL-encoded and appended. A null value is skipped; an `Iterable` or an array
+ * repeats the parameter (`id=1&id=2`).
+ * @param headers for this request; they replace headers of the same name on the config.
+ * @param pathParams the values for the placeholders in [path], URL-encoded. The names must match exactly.
+ * @throws HttpClientException for a 4xx status.
+ * @throws HttpServerException for a 5xx status.
+ * @throws HttpException for any other status outside `200..299`.
+ * @throws java.io.IOException if the request could not be sent or timed out.
+ */
 inline fun <reified T> RequestConfig.get(
     path: String,
     queryParams: Map<String, Any?> = emptyMap(),
@@ -51,6 +63,7 @@ inline fun <reified T> RequestConfig.get(
     pathParams: Map<String, Any> = emptyMap(),
 ): T = exchange<T>(GET, path, queryParams = queryParams, headers = headers, pathParams = pathParams).body
 
+/** Like [get], but a `404` gives `null` instead of an [HttpClientException], as does an empty body. */
 inline fun <reified T : Any> RequestConfig.getOrNull(
     path: String,
     queryParams: Map<String, Any?> = emptyMap(),
@@ -62,6 +75,16 @@ inline fun <reified T : Any> RequestConfig.getOrNull(
     if (e.status == 404) null else throw e
 }
 
+/**
+ * Sends a POST and returns the response body as [T]. The other parameters and the exceptions are
+ * as for [get].
+ *
+ * @param body `null` sends no body. A `String` is sent as it is, a `ByteArray` as raw bytes, a
+ * [MultipartBody] as `multipart/form-data`, and anything else is serialized to JSON.
+ * @param contentType defaults to the body: `application/octet-stream` for a `ByteArray`, the
+ * multipart type with its boundary for a [MultipartBody], and `application/json` for everything
+ * else, a `String` included.
+ */
 inline fun <reified T> RequestConfig.post(
     path: String,
     body: Any? = null,
@@ -71,6 +94,7 @@ inline fun <reified T> RequestConfig.post(
     pathParams: Map<String, Any> = emptyMap(),
 ): T = exchange<T>(POST, path, body, queryParams, headers, contentType, pathParams).body
 
+/** Sends a PUT and returns the response body as [T]. Parameters and exceptions are as for [post]. */
 inline fun <reified T> RequestConfig.put(
     path: String,
     body: Any? = null,
@@ -80,6 +104,7 @@ inline fun <reified T> RequestConfig.put(
     pathParams: Map<String, Any> = emptyMap(),
 ): T = exchange<T>(PUT, path, body, queryParams, headers, contentType, pathParams).body
 
+/** Sends a PATCH and returns the response body as [T]. Parameters and exceptions are as for [post]. */
 inline fun <reified T> RequestConfig.patch(
     path: String,
     body: Any? = null,
@@ -89,6 +114,7 @@ inline fun <reified T> RequestConfig.patch(
     pathParams: Map<String, Any> = emptyMap(),
 ): T = exchange<T>(PATCH, path, body, queryParams, headers, contentType, pathParams).body
 
+/** Sends a DELETE and returns the response body as [T]. Parameters and exceptions are as for [get]. */
 inline fun <reified T> RequestConfig.delete(
     path: String,
     queryParams: Map<String, Any?> = emptyMap(),
@@ -115,6 +141,15 @@ inline fun <reified T> RequestConfig.exchange(
     return HttpResult(response.statusCode(), response.headers(), response.bodyAs(objectMapper))
 }
 
+/**
+ * Downloads the response body of a GET to [destination] without holding it in memory, and returns
+ * [destination]. The content is written to a temporary file in the same directory and moved into
+ * place only after a `2xx`, so a failed download neither replaces an existing file nor leaves a
+ * partial one. The other parameters and the status exceptions are as for [get].
+ *
+ * @param destination the file to write. An existing file is replaced; its directory must exist.
+ * @throws IllegalArgumentException if [destination] is a directory or its directory does not exist.
+ */
 fun RequestConfig.downloadFile(
     path: String,
     destination: Path,

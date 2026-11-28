@@ -94,7 +94,7 @@ Both modules share the exact same runtime dependency tree (`mvn dependency:tree 
 | `jackson-module-kotlin` (with `kotlin-reflect`) | Kotlin data classes |
 | `jackson-datatype-jsr310` | `java.time` types as ISO strings |
 
-If your build already manages Jackson or Kotlin versions (for example via Spring Boot's BOM), your versions win; `httpkt` is built against Jackson 2.18 and Kotlin 2.1.
+If your build already manages Jackson or Kotlin versions (for example via Spring Boot's BOM), your versions win; `httpkt` is built against Jackson 2.18 and Kotlin 2.1. From 1.0.1 it only uses Kotlin 1.9 standard-library API, so an older `kotlin-stdlib` down to 1.9 (as Spring Boot 3 manages it) works.
 
 JSON is the only built-in format. Other formats (such as XML) go through as text so no XML library is pulled onto your classpath unless you add one yourself.
 
@@ -422,7 +422,7 @@ Logger names are `io.github.httpkt.dsl` and `io.github.httpkt.functions`, so the
 | --- | --- |
 | **SLF4J 2 + Logback** | Add `org.slf4j:slf4j-jdk-platform-logging`, then set `io.github.httpkt` to `DEBUG` |
 | **Log4j 2** | Add `org.apache.logging.log4j:log4j-jpl`, then set `io.github.httpkt` to `DEBUG` |
-| **Spring Boot** | Boot bridges `java.util.logging`, so `logging.level.io.github.httpkt=DEBUG` should work *(not verified in this repository)* |
+| **Spring Boot** | Set `logging.level.io.github.httpkt=DEBUG`. Nothing to add: Boot bridges `java.util.logging` to Logback *(checked with the default starter on Boot 3.5 and 4.2)* |
 | **Plain JDK (`java.util.logging`)** | Set both `io.github.httpkt.level = FINE` and `java.util.logging.ConsoleHandler.level = FINE` |
 
 Without a bridge, `<logger name="io.github.httpkt" level="DEBUG"/>` in `logback.xml` will not show output because `System.Logger` defaults to `java.util.logging`.
@@ -450,6 +450,8 @@ For low-level wire diagnostics from the JDK itself, pass `-Djdk.httpclient.HttpC
 - Request paths must be relative to `baseUrl` / `url`: `scheme://...`, `//host...`, and `http:`/`https:` are rejected. A leading `/` is optional (`orders:cancel` and `/orders:cancel` resolve identically).
 - Inside `Authorization.cachedBearer`, the token fetch runs while holding a lock so concurrent requests share one refresh — do not dispatch the fetch to another thread that uses the same `Authorization`.
 - Each client or config gets its own copy of the default `ObjectMapper`, so reconfiguring it never affects other clients.
+- On the Java module path the modules are named `io.github.httpkt.dsl` and `io.github.httpkt.functions` (`Automatic-Module-Name`, from 1.0.1).
+- The API documentation (KDoc) ships in the `-javadoc` jar from 1.0.1, and your IDE shows it from the `-sources` jar.
 
 ---
 

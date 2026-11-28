@@ -54,6 +54,15 @@ internal val mapper: ObjectMapper = jacksonObjectMapper()
 fun defaultObjectMapper(): ObjectMapper = mapper.copy()
 
 /**
+ * Everything the requests to one API share. The calls are extension functions on it: [get],
+ * [getOrNull], [post], [put], [patch], [delete], [exchange] and [downloadFile]. It is immutable
+ * and safe to share between threads; use `copy()` for a variant, such as a longer timeout.
+ *
+ * ```
+ * val api = RequestConfig("https://api.example.com/v1", authorization = Authorization.bearer(token))
+ * val created: Order = api.post("/orders", body = NewOrder(customerId = 7))
+ * ```
+ *
  * @param url scheme, host and optionally port, path prefix and query (`https://api.example.com:8443/v1`).
  * @param authorization asked for the `Authorization` header value each time a request is sent;
  * see [Authorization]. A `headers` entry named `Authorization` takes its place.
@@ -160,6 +169,10 @@ internal fun expandPath(path: String, pathParams: Map<String, Any>): String {
     return expanded
 }
 
+/**
+ * URL-encodes [value] for use as one path segment: a space becomes `%20` and a slash `%2F`.
+ * `pathParams` already does this; it is for a path you assemble yourself.
+ */
 fun encodePathSegment(value: String): String =
     URLEncoder.encode(value, StandardCharsets.UTF_8)
         .replace("+", "%20")

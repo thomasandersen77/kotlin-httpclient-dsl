@@ -19,6 +19,10 @@
    </scm>
    <packaging>jar</packaging>
 
+   <properties>
+      <automatic.module.name>io.github.httpkt.functions</automatic.module.name>
+   </properties>
+
    <dependencies>
       <dependency>
          <groupId>org.jetbrains.kotlin</groupId>

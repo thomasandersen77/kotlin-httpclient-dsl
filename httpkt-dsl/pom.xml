@@ -19,6 +19,10 @@
         <url>https://github.com/httpkt/httpkt</url>
     </scm>
 
+    <properties>
+        <automatic.module.name>io.github.httpkt.dsl</automatic.module.name>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>org.jetbrains.kotlin</groupId>

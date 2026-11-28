@@ -11,6 +11,10 @@ import java.net.http.HttpResponse.BodyHandlers
 import java.nio.charset.StandardCharsets
 import java.time.Duration
 
+/**
+ * Marks the request DSL, so that inside a nested block the compiler does not silently resolve a
+ * call against an outer request.
+ */
 @DslMarker
 annotation class HttpDsl
 
@@ -35,6 +39,11 @@ internal fun requireOrdinaryHeader(name: String, setWith: String) {
     }
 }
 
+/**
+ * The receiver of the block passed to [HttpClientDsl.get], [HttpClientDsl.post] and the others.
+ * Everything here applies to that one request only. The block runs once, before the request is
+ * sent, and an instance is not meant to be kept or shared.
+ */
 @HttpDsl
 class RequestDsl internal constructor(
     private val method: HttpMethod,

@@ -235,9 +235,13 @@ Version 1.0.0 was published to Maven Central on 2026-11-27; a published version 
 changed or removed, so a fix always means a new version.
 
 The `release` profile in the root POM adds what Maven Central requires: a sources jar, a javadoc
-jar (it only holds the README and the licence; the API documentation is the KDoc in the sources),
-GPG signatures and `central-publishing-maven-plugin`. `mvn -Prelease -Dgpg.skip verify` builds
-everything except the signatures and is the way to check the profile without credentials.
+jar generated from the KDoc by `dokka-maven-plugin` (so every public declaration needs KDoc that
+reads well on its own), GPG signatures and `central-publishing-maven-plugin`. Each module jar
+carries an `Automatic-Module-Name` equal to its package; changing it is a breaking change.
+The Kotlin compiler runs with `apiVersion` 1.9 (`kotlin.api.version`), because a consumer's build
+can put an older `kotlin-stdlib` on the classpath; do not raise it just to use a newer stdlib API.
+`mvn -Prelease -Dgpg.skip verify` builds everything except the signatures and is the way to
+check the profile without credentials.
 `mvn -Prelease deploy` uploads, and needs the owner's GPG key and a Central Portal token under
 the server id `central` in `~/.m2/settings.xml`. Never create, store or print those.
 

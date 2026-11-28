@@ -8,6 +8,19 @@ import java.net.http.HttpResponse
 import java.time.Duration
 
 /**
+ * A client for one API: a base URL plus what every request to it shares. Each of [get], [post],
+ * [put], [patch] and [delete] sends one request and returns the JDK's own `HttpResponse<String>`;
+ * read it with [bodyAs], [bodyAsOrNull] or [header]. A client is safe to share between threads.
+ *
+ * ```
+ * val api = HttpClientDsl("https://api.example.com/v1", authorization = Authorization.bearer(token))
+ * val order: Order = api.get("/orders/{id}", 42) { queryParam("expand", "lines") }.bodyAs()
+ * ```
+ *
+ * This constructor takes your own `HttpClient`, for when you need a proxy, an SSL context, an
+ * executor or control over its lifetime. The other constructor builds one for you.
+ *
+ * @param httpClient used for every request and never closed by this class.
  * @param authorization asked for the full `Authorization` header value each time a request
  * is sent. A lambda works for static or always-fresh credentials; [CachedAuthorization]
  * fetches once and refreshes after a 401. A request can replace it with
@@ -41,6 +54,10 @@ class HttpClientDsl(
         this.defaultHeaders.keys.forEach { requireOrdinaryHeader(it, setWith = "defaultHeaders") }
     }
 
+    /**
+     * Builds the `HttpClient` itself: it follows redirects (never from HTTPS to HTTP) and gives up
+     * connecting after [connectTimeout]. The other parameters are described on the class.
+     */
     constructor(
         baseUrl: String,
         connectTimeout: Duration = Duration.ofSeconds(30),
@@ -60,18 +77,31 @@ class HttpClientDsl(
         requestTimeout = requestTimeout,
     )
 
+    /**
+     * Sends a GET. [path] is relative to [baseUrl] and may contain `{placeholders}`, filled in order
+     * from [uriVariables] and URL-encoded. [configure] adds headers, query parameters and a timeout.
+     * The response is returned whatever its status; [bodyAs] is what throws on a non-2xx.
+     *
+     * @throws IllegalArgumentException if [path] is an absolute URL or the number of
+     * [uriVariables] does not match the placeholders.
+     * @throws java.io.IOException if the request could not be sent or timed out.
+     */
     fun get(path: String, vararg uriVariables: Any, configure: RequestDsl.() -> Unit = {}): HttpResponse<String> =
         send(HttpMethod.GET, path, uriVariables, configure)
 
+    /** Sends a POST. Set the body in [configure] with `json`, `form` or `body`. Otherwise as [get]. */
     fun post(path: String, vararg uriVariables: Any, configure: RequestDsl.() -> Unit = {}): HttpResponse<String> =
         send(HttpMethod.POST, path, uriVariables, configure)
 
+    /** Sends a PUT. Set the body in [configure] with `json`, `form` or `body`. Otherwise as [get]. */
     fun put(path: String, vararg uriVariables: Any, configure: RequestDsl.() -> Unit = {}): HttpResponse<String> =
         send(HttpMethod.PUT, path, uriVariables, configure)
 
+    /** Sends a PATCH. Set the body in [configure] with `json`, `form` or `body`. Otherwise as [get]. */
     fun patch(path: String, vararg uriVariables: Any, configure: RequestDsl.() -> Unit = {}): HttpResponse<String> =
         send(HttpMethod.PATCH, path, uriVariables, configure)
 
+    /** Sends a DELETE. Like GET it cannot have a body. Otherwise as [get]. */
     fun delete(path: String, vararg uriVariables: Any, configure: RequestDsl.() -> Unit = {}): HttpResponse<String> =
         send(HttpMethod.DELETE, path, uriVariables, configure)
 
@@ -138,6 +168,7 @@ class HttpStatusException @PublishedApi internal constructor(
     @PublishedApi internal val objectMapper: ObjectMapper,
 ) : RuntimeException(statusMessage(status, method, uri)) {
 
+    /** For your own code and tests. [bodyAs] then deserializes with the library's default mapper. */
     constructor(status: Int, body: String, method: String? = null, uri: URI? = null) :
         this(status, body, method, uri, dslObjectMapper)
 
