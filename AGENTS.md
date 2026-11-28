@@ -287,7 +287,11 @@ yet)` section in `CHANGELOG.md`, gives it today's date and uses it as the releas
 the changelog entry in the same commit as the change. A README line starting `> **This README
 describes <version>, which is not released yet.**` is removed. `scripts/release.sh <version> --dry-run`
 builds and tests the same thing without signing, uploading, committing or tagging. The script
-uploads but never publishes: the owner clicks Publish in the Central Portal. An agent may run
+uploads but never publishes: the owner clicks Publish in the Central Portal. After the upload it
+waits, up to an hour, until Maven Central serves the version, and only then pushes `master` and
+the tag and creates the GitHub release; if the wait is interrupted or times out,
+`scripts/release.sh <version> --finish` does that last part. An agent whose shell has a time
+limit should start the release in the background, or run it and then `--finish`. An agent may run
 the dry run freely, and the real release only when the owner asked for that version.
 
 ## CI and configuration caveats
