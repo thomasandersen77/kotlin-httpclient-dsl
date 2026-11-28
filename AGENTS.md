@@ -196,7 +196,7 @@ mvn clean verify
 
 The tests are JUnit Jupiter tests executed by Surefire. Both HTTP modules start
 WireMock on dynamic local ports; they require no external API credentials or Docker.
-`DslTest` has 44 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 29,
+`DslTest` has 46 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 30,
 `FunctionsUsageExamplesTest` has 10, and `RequestConfigTest` has 13. The two `*UsageExamplesTest`
 classes are the runnable source of the README's usage examples.
 There is no separate Failsafe integration-test setup.
@@ -249,6 +249,14 @@ can put an older `kotlin-stdlib` on the classpath; do not raise it just to use a
 check the profile without credentials.
 `mvn -Prelease deploy` uploads, and needs the owner's GPG key and a Central Portal token under
 the server id `central` in `~/.m2/settings.xml`. Never create, store or print those.
+
+A release is made with `scripts/release.sh <version>`: it checks that `master` is clean and equal
+to `origin/master`, sets the version in the POMs and in the README's install coordinates, runs
+`mvn -Prelease clean deploy`, commits and tags `v<version>`, moves `master` to the next
+`-SNAPSHOT`, pushes and creates the GitHub release. `scripts/release.sh <version> --dry-run`
+builds and tests the same thing without signing, uploading, committing or tagging. The script
+uploads but never publishes: the owner clicks Publish in the Central Portal. An agent may run
+the dry run freely, and the real release only when the owner asked for that version.
 
 ## CI and configuration caveats
 

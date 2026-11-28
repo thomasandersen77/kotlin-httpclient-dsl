@@ -930,30 +930,36 @@ class DslTest {
     }
 
     @Test
-    internal fun `contentType is not sent on a bodyless request, requestTimeout must be positive, and tilde is preserved`() {
-        wiremock.stubFor(get(urlEqualTo("/users/~alice?filter=~v1")).willReturn(aResponse().withStatus(200)))
-        wiremock.stubFor(post(urlEqualTo("/empty-post")).willReturn(aResponse().withStatus(204)))
+    internal fun `contentType without a body sends no Content-Type header`() {
+        wiremock.stubFor(get(urlEqualTo("/no-body")).willReturn(aResponse().withStatus(200)))
+        wiremock.stubFor(post(urlEqualTo("/no-body")).willReturn(aResponse().withStatus(204)))
         val http = HttpClientDsl("http://localhost:${wiremock.port()}")
 
-        http.get("/users/{handle}", "~alice") {
-            queryParam("filter", "~v1")
-            contentType("application/json")
-        }
-        http.post("/empty-post") {
-            contentType("application/json")
-        }
+        http.get("/no-body") { contentType("application/json") }
+        http.post("/no-body") { contentType("application/json") }
 
-        wiremock.verify(getRequestedFor(urlEqualTo("/users/~alice?filter=~v1")).withoutHeader("Content-Type"))
-        wiremock.verify(postRequestedFor(urlEqualTo("/empty-post")).withoutHeader("Content-Type"))
+        wiremock.verify(getRequestedFor(urlEqualTo("/no-body")).withoutHeader("Content-Type"))
+        wiremock.verify(postRequestedFor(urlEqualTo("/no-body")).withoutHeader("Content-Type"))
+    }
 
+    @Test
+    internal fun `tilde is kept unencoded in path variables and query parameters`() {
+        wiremock.stubFor(get(urlEqualTo("/users/~alice?filter=~v1")).willReturn(aResponse().withStatus(200)))
+        val http = HttpClientDsl("http://localhost:${wiremock.port()}")
+
+        http.get("/users/{handle}", "~alice") { queryParam("filter", "~v1") }
+
+        wiremock.verify(getRequestedFor(urlEqualTo("/users/~alice?filter=~v1")))
+    }
+
+    @Test
+    internal fun `requestTimeout must be positive`() {
+        val baseUrl = "http://localhost:${wiremock.port()}"
+
+        assertFailsWith<IllegalArgumentException> { HttpClientDsl(baseUrl, requestTimeout = java.time.Duration.ZERO) }
+        assertFailsWith<IllegalArgumentException> { HttpClientDsl(baseUrl, requestTimeout = ofSeconds(-1)) }
         assertFailsWith<IllegalArgumentException> {
-            HttpClientDsl("http://localhost:${wiremock.port()}", requestTimeout = java.time.Duration.ZERO)
-        }
-        assertFailsWith<IllegalArgumentException> {
-            HttpClientDsl("http://localhost:${wiremock.port()}", requestTimeout = ofSeconds(-1))
-        }
-        assertFailsWith<IllegalArgumentException> {
-            http.get("/users/~alice") { requestTimeout = java.time.Duration.ZERO }
+            HttpClientDsl(baseUrl).get("/anything") { requestTimeout = java.time.Duration.ZERO }
         }
     }
 

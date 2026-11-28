@@ -436,12 +436,14 @@ For low-level wire diagnostics from the JDK itself, pass `-Djdk.httpclient.HttpC
 **DSL module**
 - Unknown JSON fields fail by default — annotate DTOs with `@JsonIgnoreProperties(ignoreUnknown = true)` or pass a configured `defaultObjectMapper()`.
 - No `Accept` header is sent unless you set one via `defaultHeaders` or `header(...)`.
+- `contentType(...)` describes the body, so a request without a body sends no `Content-Type` (from 1.0.1).
 - `bodyAs` uses the client's `ObjectMapper` for responses returned by `HttpClientDsl` and falls back to the library default for any other `HttpResponse<String>`.
 
 **Functions module**
 - A `String` body is sent with `Content-Type: application/json` unless you pass `contentType`.
 - For `ByteArray` results, only `204` counts as empty (`getOrNull` returns `null`); an empty `200` returns an empty `ByteArray`.
-- The destination directory for `downloadFile` must exist before calling; a failed download leaves any existing file untouched.
+- The destination directory for `downloadFile` must exist before calling; a failed download leaves any existing file untouched. The exception carries at most the first 64 KB of the error body.
+- Response text is decoded with the `charset` of the response's `Content-Type`, and as UTF-8 when there is none (from 1.0.1; earlier always UTF-8).
 - The default `HttpClient` is shared across configs — do not `close()` `config.httpClient` unless you supplied your own instance.
 - `RequestConfig` keeps the `headers` map you pass in — do not mutate it afterwards.
 - Custom multipart boundaries may only contain letters, digits, and `' + _ - .` (1–70 characters).
@@ -450,6 +452,7 @@ For low-level wire diagnostics from the JDK itself, pass `-Djdk.httpclient.HttpC
 - Request paths must be relative to `baseUrl` / `url`: `scheme://...`, `//host...`, and `http:`/`https:` are rejected. A leading `/` is optional (`orders:cancel` and `/orders:cancel` resolve identically).
 - Inside `Authorization.cachedBearer`, the token fetch runs while holding a lock so concurrent requests share one refresh — do not dispatch the fetch to another thread that uses the same `Authorization`.
 - Each client or config gets its own copy of the default `ObjectMapper`, so reconfiguring it never affects other clients.
+- `requestTimeout` must be positive; zero or a negative duration is rejected when the client or config is created.
 - On the Java module path the modules are named `io.github.httpkt.dsl` and `io.github.httpkt.functions` (`Automatic-Module-Name`, from 1.0.1).
 - The API documentation (KDoc) ships in the `-javadoc` jar from 1.0.1, and your IDE shows it from the `-sources` jar.
 

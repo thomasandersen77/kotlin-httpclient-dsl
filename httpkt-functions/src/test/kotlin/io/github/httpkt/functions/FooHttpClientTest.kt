@@ -631,6 +631,19 @@ internal class FooHttpClientTest {
     }
 
     @Test
+    internal fun `downloadFile keeps at most 64 KB of an error body`(@TempDir tempDir: Path) {
+        wiremock.stubFor(get(urlEqualTo("/api/huge-error"))
+            .willReturn(aResponse().withStatus(500).withBody("x".repeat(100_000))))
+        val config = RequestConfig(url = "http://localhost:${wiremock.port()}")
+        val destination = tempDir.resolve("out.bin")
+
+        val error = assertThrows(HttpServerException::class.java) { config.downloadFile("/api/huge-error", destination) }
+
+        assertEquals(64 * 1024, error.body.length)
+        assertFalse(Files.exists(destination))
+    }
+
+    @Test
     internal fun `responses respect Content-Type charset and fall back to UTF-8`(@TempDir tempDir: Path) {
         val latin1 = java.nio.charset.StandardCharsets.ISO_8859_1
         wiremock.stubFor(get(urlEqualTo("/api/latin1"))
