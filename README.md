@@ -50,7 +50,7 @@ Use **`httpkt-dsl`** when you want to shape each request and inspect responses; 
 
 ## Installation
 
-Requires **Java 11** or newer. Current version: **`1.0.0`**, available on [Maven Central](https://central.sonatype.com/namespace/io.github.httpkt).
+Requires **Java 11** or newer. .0.1`**, available on [Maven Central](https://central.sonatype.com/namespace/io.github.httpkt).
 
 ### Maven
 
@@ -61,7 +61,7 @@ Add **one** of the two modules:
 <dependency>
     <groupId>io.github.httpkt</groupId>
     <artifactId>httpkt-dsl</artifactId>
-    <version>1.0.0</version>
+    .0.1</version>
 </dependency>
 ```
 
@@ -70,7 +70,7 @@ Add **one** of the two modules:
 <dependency>
     <groupId>io.github.httpkt</groupId>
     <artifactId>httpkt-functions</artifactId>
-    <version>1.0.0</version>
+    .0.1</version>
 </dependency>
 ```
 
@@ -78,8 +78,8 @@ Add **one** of the two modules:
 
 ```kotlin
 // Pick one:
-implementation("io.github.httpkt:httpkt-dsl:1.0.0")
-// implementation("io.github.httpkt:httpkt-functions:1.0.0")
+implementation(".0.1")
+// implementation(".0.1")
 ```
 
 <details>
