@@ -261,4 +261,14 @@ class RequestConfigTest {
         assertSame(customClient, config.httpClient)
         assertEquals(HttpClient.Redirect.NEVER, config.httpClient.followRedirects())
     }
+
+    @Test
+    fun `requestTimeout must be positive`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            RequestConfig(url = "http://localhost", requestTimeout = Duration.ZERO)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            RequestConfig(url = "http://localhost", requestTimeout = Duration.ofSeconds(-5))
+        }
+    }
 }

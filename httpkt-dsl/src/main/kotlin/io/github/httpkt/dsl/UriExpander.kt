@@ -32,7 +32,9 @@ internal object UriExpander {
     }
 
     internal fun encode(value: String): String =
-        URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+        URLEncoder.encode(value, StandardCharsets.UTF_8)
+            .replace("+", "%20")
+            .replace("%7E", "~")
 
     private fun encodeValue(value: String): String = encode(value)
 }

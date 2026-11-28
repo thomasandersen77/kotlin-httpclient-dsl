@@ -80,6 +80,20 @@ data class RequestConfig(
     val httpClient: HttpClient = defaultHttpClient,
     val objectMapper: ObjectMapper = defaultObjectMapper(),
 ) {
+    init {
+        require(!requestTimeout.isZero && !requestTimeout.isNegative) {
+            "requestTimeout must be positive, got $requestTimeout"
+        }
+    }
+
+    private val baseUri: URI by lazy {
+        val parsed = URI.create(url)
+        require(!parsed.scheme.isNullOrBlank() && !parsed.host.isNullOrBlank()) {
+            "RequestConfig.url must include scheme and host, got '$url'"
+        }
+        parsed
+    }
+
     /** Header values, credentials and the url's user info and query are left out, so the config is safe to log. */
     override fun toString(): String =
         "RequestConfig(url=${urlWithoutSecrets()}, authorization=${if (authorization == null) "none" else "set"}, " +
@@ -96,10 +110,7 @@ data class RequestConfig(
     }.getOrDefault("<invalid url>")
 
     internal fun resolveUri(path: String, queryParams: Map<String, Any?> = emptyMap()): URI {
-        val baseUri = URI.create(url)
-        require(!baseUri.scheme.isNullOrBlank() && !baseUri.host.isNullOrBlank()) {
-            "RequestConfig.url must include scheme and host, got '$url'"
-        }
+        val baseUri = this.baseUri
         val pathUri = URI.create(relativePath(path, "RequestConfig.url"))
         val basePath = baseUri.rawPath.orEmpty()
         val subPath = pathUri.rawPath.orEmpty()

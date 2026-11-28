@@ -10,6 +10,7 @@ import io.github.httpkt.functions.Method.PUT
 import java.net.http.HttpHeaders
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -145,7 +146,9 @@ inline fun <reified T> RequestConfig.exchange(
  * Downloads the response body of a GET to [destination] without holding it in memory, and returns
  * [destination]. The content is written to a temporary file in the same directory and moved into
  * place only after a `2xx`, so a failed download neither replaces an existing file nor leaves a
- * partial one. The other parameters and the status exceptions are as for [get].
+ * partial one. The other parameters and the status exceptions are as for [get]; on a non-`2xx`
+ * response, at most the first 64 KB of the error body are read into the exception (decoded with
+ * the response's `Content-Type` charset, defaulting to UTF-8).
  *
  * @param destination the file to write. An existing file is replaced; its directory must exist.
  * @throws IllegalArgumentException if [destination] is a directory or its directory does not exist.
@@ -176,7 +179,7 @@ fun RequestConfig.downloadFile(
         )
         val status = response.statusCode()
         if (status !in 200..299) {
-            throw statusException(status, runCatching { Files.readString(partial, StandardCharsets.UTF_8) }.getOrDefault(""))
+            throw statusException(status, readErrorBody(partial, response.responseCharset()))
         }
         Files.move(partial, target, StandardCopyOption.REPLACE_EXISTING)
         return destination
@@ -289,14 +292,37 @@ internal fun <B> RequestConfig.send(
 internal inline fun <reified T> HttpResponse<ByteArray>.bodyAs(objectMapper: ObjectMapper): T {
     val status = statusCode()
     if (status !in 200..299) {
-        throw statusException(status, String(body(), StandardCharsets.UTF_8))
+        throw statusException(status, String(body(), responseCharset()))
     }
     if (T::class == ByteArray::class) {
         // Only 204 means "nothing there"; an empty 200 is a real, empty file.
         return (if (status == 204 && null is T) null else body()) as T
     }
-    return String(body(), StandardCharsets.UTF_8).asType(objectMapper)
+    return String(body(), responseCharset()).asType(objectMapper)
 }
+
+private val charsetPattern = Regex("""(?i)(?:^|;)\s*charset\s*=\s*"?([^";\s]+)"?""")
+private const val MAX_DOWNLOAD_ERROR_BYTES = 64 * 1024
+
+@PublishedApi
+internal fun HttpResponse<*>.responseCharset(): Charset {
+    val contentType = headers().firstValue("Content-Type").orElse(null) ?: return StandardCharsets.UTF_8
+    val name = charsetPattern.find(contentType)?.groupValues?.get(1) ?: return StandardCharsets.UTF_8
+    return runCatching { Charset.forName(name) }.getOrDefault(StandardCharsets.UTF_8)
+}
+
+private fun readErrorBody(file: Path, charset: Charset): String = runCatching {
+    Files.newInputStream(file).use { input ->
+        val buffer = ByteArray(MAX_DOWNLOAD_ERROR_BYTES)
+        var total = 0
+        while (total < buffer.size) {
+            val read = input.read(buffer, total, buffer.size - total)
+            if (read == -1) break
+            total += read
+        }
+        String(buffer, 0, total, charset)
+    }
+}.getOrDefault("")
 
 @PublishedApi
 internal fun statusException(status: Int, body: String): HttpException = when (status) {

@@ -54,7 +54,7 @@ independent of each other.
   `Content-Type: application/json`; `form(vararg pairs)` sends an encoded
   `application/x-www-form-urlencoded` body; `body(content, contentType)` sets a raw string
   body and its default `Content-Type`. An explicit `contentType(...)` overrides any of these
-  defaults, in either order.
+  defaults, in either order, and is only sent when the request has a body.
 - `queryParam` and `form` skip `null` and add one entry per element of an `Iterable` or
   any array, primitive arrays included (`valuesOf`).
 - The default `ObjectMapper` is the shared `dslObjectMapper` (Kotlin module and Java time
@@ -75,8 +75,9 @@ independent of each other.
   uses a caller-supplied `HttpClient`. Both end with `objectMapper = defaultObjectMapper()`,
   `defaultHeaders = emptyMap()` and `requestTimeout = 30s`. Every request uses the client's
   shared `HttpClient`.
-- Connection and request timeouts default to 30 seconds. `RequestDsl.requestTimeout` starts as
-  the client's `requestTimeout` and can be reassigned per request.
+- Connection and request timeouts default to 30 seconds; `requestTimeout` must be positive
+  (validated on `HttpClientDsl` construction and before sending in `RequestDsl.exchange`).
+  `RequestDsl.requestTimeout` starts as the client's `requestTimeout` and can be reassigned per request.
 - Results are `HttpResponse<String>`; callers read raw strings with `body()` or deserialize
   JSON with the `bodyAs<T>()` extension. The object actually returned is the internal
   `MappedHttpResponse`, which delegates to the JDK response and carries the client's
@@ -113,8 +114,9 @@ independent of each other.
 → `RequestConfig.send` (`buildRequest`, `HttpClient.send` with a byte-array body, one resend after a 401)
 → `HttpResponse<ByteArray>.bodyAs` → `String.asType` for Jackson deserialization (with `ByteArray`, `String`, `Unit` and nullable support).
 
-- `RequestConfig(url, authorization, headers, requestTimeout, httpClient, objectMapper)`. The port
-  is part of `url`. `defaultHttpClient` (shared) and `mapper` are `internal`; `objectMapper`
+- `RequestConfig(url, authorization, headers, requestTimeout, httpClient, objectMapper)`.
+  `requestTimeout` must be positive. The port is part of `url`; `baseUri` is parsed and validated
+  lazily on first `resolveUri`. `defaultHttpClient` (shared) and `mapper` are `internal`; `objectMapper`
   defaults to `defaultObjectMapper()`, a fresh copy per config. `toString()` prints header names
   only, never the authorization, and the url without user info and query.
 - `resolveUri` rejects an absolute URL as `path` (same `relativePath` rule as the DSL module, with
@@ -140,7 +142,10 @@ independent of each other.
 - `downloadFile` writes to a `.part` file beside the destination, opened with
   `TRUNCATE_EXISTING` because a 401 resend reuses it, and moves it into place only after a 2xx;
   the `.part` file is always removed. Before the request it checks that the normalized
-  destination is not a directory and that its parent directory exists.
+  destination is not a directory and that its parent directory exists. On non-2xx, at most the
+  first 64 KB of the error body are read into the exception.
+- Text and error responses in `bodyAs` and `downloadFile` are decoded with the `charset` from the
+  response `Content-Type` header (defaulting to UTF-8 when absent or unrecognized).
 - `MultipartBody` rejects CR/LF in names, filenames and content types, and requires an
   boundary of 1-70 characters from `A-Z a-z 0-9 ' + _ - .`, which is safe unquoted in the header.
 - For `ByteArray` results only a 204 is "no content" (`getOrNull` gives `null`); an empty 200
@@ -191,8 +196,8 @@ mvn clean verify
 
 The tests are JUnit Jupiter tests executed by Surefire. Both HTTP modules start
 WireMock on dynamic local ports; they require no external API credentials or Docker.
-`DslTest` has 43 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 28,
-`FunctionsUsageExamplesTest` has 10, and `RequestConfigTest` has 12. The two `*UsageExamplesTest`
+`DslTest` has 44 tests, `DslUsageExamplesTest` has 11, `FooHttpClientTest` has 29,
+`FunctionsUsageExamplesTest` has 10, and `RequestConfigTest` has 13. The two `*UsageExamplesTest`
 classes are the runnable source of the README's usage examples.
 There is no separate Failsafe integration-test setup.
 
@@ -208,7 +213,7 @@ command, actual test counts and any build blocker when verifying changes.
 These are observations, not approval to change unrelated behavior:
 
 - `UriExpander` (`internal`) validates that placeholder count matches supplied `uriVariables`
-  and URL-encodes each variable (with `%20` for spaces).
+  and URL-encodes each variable (with `%20` for spaces and `~` kept unencoded per RFC 3986).
 - `RequestDsl.exchange` sends `BodyPublishers.noBody()` when no body is set, so bodyless
   `POST`, `PUT` and `PATCH` requests preserve their HTTP method.
 - Both modules register Jackson's `KotlinModule` and `JavaTimeModule` with

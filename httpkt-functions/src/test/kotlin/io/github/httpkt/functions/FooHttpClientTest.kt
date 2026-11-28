@@ -630,6 +630,34 @@ internal class FooHttpClientTest {
         assertTrue(lines.none { "s3cret" in it }, lines.toString())
     }
 
+    @Test
+    internal fun `responses respect Content-Type charset and fall back to UTF-8`(@TempDir tempDir: Path) {
+        val latin1 = java.nio.charset.StandardCharsets.ISO_8859_1
+        wiremock.stubFor(get(urlEqualTo("/api/latin1"))
+            .willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "text/plain; charset=ISO-8859-1")
+                .withBody("Blåbærsyltetøy".toByteArray(latin1))))
+        wiremock.stubFor(get(urlEqualTo("/api/latin1-error"))
+            .willReturn(aResponse().withStatus(422)
+                .withHeader("Content-Type", "text/plain; charset=\"iso-8859-1\"")
+                .withBody("Ugyldig fødselsnummer: æøå".toByteArray(latin1))))
+        wiremock.stubFor(get(urlEqualTo("/api/unknown-charset"))
+            .willReturn(aResponse().withStatus(200)
+                .withHeader("Content-Type", "text/plain; charset=no-such-charset")
+                .withBody("Blåbær".toByteArray(java.nio.charset.StandardCharsets.UTF_8))))
+
+        val config = RequestConfig(url = "http://localhost:${wiremock.port()}")
+
+        assertEquals("Blåbærsyltetøy", config.get<String>("/api/latin1"))
+        val error = assertThrows(HttpClientException::class.java) { config.get<String>("/api/latin1-error") }
+        assertEquals("Ugyldig fødselsnummer: æøå", error.body)
+        val downloadError = assertThrows(HttpClientException::class.java) {
+            config.downloadFile("/api/latin1-error", tempDir.resolve("out.bin"))
+        }
+        assertEquals("Ugyldig fødselsnummer: æøå", downloadError.body)
+        assertEquals("Blåbær", config.get<String>("/api/unknown-charset"))
+    }
+
     /** Runs [block] with DEBUG switched on for [loggerName] and returns the lines it logged. */
     private fun debugLinesOf(loggerName: String, block: () -> Unit): List<String> {
         val lines = java.util.Collections.synchronizedList(mutableListOf<String>())

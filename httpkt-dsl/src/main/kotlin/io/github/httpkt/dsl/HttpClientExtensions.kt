@@ -51,6 +51,9 @@ class HttpClientDsl(
         require(!baseUri.scheme.isNullOrBlank() && !baseUri.host.isNullOrBlank()) {
             "baseUrl must include scheme and host, got '$baseUrl'"
         }
+        require(!requestTimeout.isZero && !requestTimeout.isNegative) {
+            "requestTimeout must be positive, got $requestTimeout"
+        }
         this.defaultHeaders.keys.forEach { requireOrdinaryHeader(it, setWith = "defaultHeaders") }
     }
 

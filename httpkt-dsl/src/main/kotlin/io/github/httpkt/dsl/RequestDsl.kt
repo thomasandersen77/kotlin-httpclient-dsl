@@ -135,6 +135,9 @@ class RequestDsl internal constructor(
     }
 
     internal fun exchange(uri: URI): HttpResponse<String> {
+        require(!requestTimeout.isZero && !requestTimeout.isNegative) {
+            "requestTimeout must be positive, got $requestTimeout"
+        }
         val targetUri = appendQueryParams(uri)
         val firstRequest = buildRequest(targetUri)
 
@@ -180,7 +183,9 @@ class RequestDsl internal constructor(
             .apply {
                 defaultHeadersNotReplaced().forEach { (name, value) -> header(name, value) }
                 headers.forEach { (name, value) -> header(name, value) }
-                (explicitContentType ?: defaultContentType)?.let { header("Content-Type", it) }
+                if (body != null) {
+                    (explicitContentType ?: defaultContentType)?.let { header("Content-Type", it) }
+                }
                 authorization?.let { header("Authorization", it.headerValue()) }
             }
             .build()
